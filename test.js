@@ -86,19 +86,51 @@ check("Alex's 2026 entry reflects the claimed Cow/calf tag with points reset to 
   assert.strictEqual(entry2026.points, 0);
 });
 
-check("computeTimeline applies NORTHERN_PREFERENCE_POINT to MPR only, not to banked points", () => {
+check("computeTimeline applies NORTHERN_PREFERENCE_POINT to MPR only for northernResident hunters, not to banked points", () => {
   const hunters = [
-    { name: "A", pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false }] },
-    { name: "B", pointsHistory: [{ year: 2026, points: 5, tagType: null, claimed: false }] }
+    { name: "A", pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false, northernResident: true }] },
+    { name: "B", pointsHistory: [{ year: 2026, points: 5, tagType: null, claimed: false, northernResident: false }] }
   ];
   const timeline = APP.computeTimeline(hunters);
   const a = timeline.find((h) => h.name === "A");
   const b = timeline.find((h) => h.name === "B");
   assert.strictEqual(a.banked, 3);
-  assert.strictEqual(a.mpr, 3 + APP.NORTHERN_PREFERENCE_POINT);
+  assert.strictEqual(a.mpr, 3 + APP.NORTHERN_PREFERENCE_POINT, "northernResident hunter gets the bonus in MPR only");
   assert.strictEqual(b.banked, 5);
-  assert.strictEqual(b.mpr, 5 + APP.NORTHERN_PREFERENCE_POINT);
-  assert.strictEqual(timeline[0].name, "B", "higher MPR should sort first");
+  assert.strictEqual(b.mpr, 5, "non-northernResident hunter gets no bonus");
+  assert.strictEqual(timeline[0].name, "B", "B's unboosted 5 still outranks A's boosted 4");
+});
+
+check("computeTimeline gives no Northern bonus when northernResident is absent or false for everyone", () => {
+  const hunters = [
+    { name: "A", pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false }] },
+    { name: "B", pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false, northernResident: false }] }
+  ];
+  const timeline = APP.computeTimeline(hunters);
+  timeline.forEach((h) => assert.strictEqual(h.mpr, h.banked));
+});
+
+check("parseRosterRows groups flat spreadsheet rows into HUNTER_SEED-shaped roster, including NorthernResident", () => {
+  const rows = [
+    { Hunter: "Zed", Year: 2025, Points: 4, TagType: null, Claimed: null, WMU: "24", Season: "Gun", MooseType: null, NorthernResident: "Y" },
+    { Hunter: "Zed", Year: 2026, Points: 5, TagType: null, Claimed: "N", WMU: "24", Season: "Gun", MooseType: null, NorthernResident: "Y" },
+    { Hunter: "Amy", Year: 2026, Points: 0, TagType: "Bull", Claimed: "Y", WMU: "28", Season: "Bow", MooseType: "Bull", NorthernResident: "N" },
+    { Hunter: "", Year: 2026, Points: 1 } // blank hunter name should be skipped
+  ];
+  const roster = APP.parseRosterRows(rows);
+  assert.strictEqual(roster.length, 2);
+  assert.strictEqual(roster[0].name, "Amy", "roster is sorted by name");
+  assert.strictEqual(roster[1].name, "Zed");
+  const zed = roster.find((h) => h.name === "Zed");
+  assert.strictEqual(zed.pointsHistory.length, 2);
+  assert.strictEqual(zed.pointsHistory[0].year, 2025, "rows are sorted by year within a hunter");
+  assert.strictEqual(zed.pointsHistory[1].points, 5);
+  assert.strictEqual(zed.pointsHistory[1].claimed, false);
+  assert.strictEqual(zed.pointsHistory[1].northernResident, true);
+  const amy = roster.find((h) => h.name === "Amy");
+  assert.strictEqual(amy.pointsHistory[0].tagType, "Bull");
+  assert.strictEqual(amy.pointsHistory[0].claimed, true);
+  assert.strictEqual(amy.pointsHistory[0].northernResident, false);
 });
 
 check("renderRules renders a card in the DOM for ruleAllocation2027", () => {
@@ -126,6 +158,25 @@ check("setLang('fr') swaps rendered rule text to French", () => {
   const card = win.document.querySelector('[data-rule="ruleWatch"]');
   assert.strictEqual(card.querySelector("h3").textContent, APP.I18N.fr.ruleWatch.h);
   APP.setLang("en");
+});
+
+check("before any upload, the roster is the demo HUNTER_SEED data, not marked as uploaded", () => {
+  assert.strictEqual(APP.isRosterUploaded(), false);
+  assert.strictEqual(APP.getActiveRoster(), APP.HUNTER_SEED);
+});
+
+check("loadRoster() swaps the active roster, marks it as uploaded, and re-renders (run last: mutates shared app state)", () => {
+  const uploaded = [
+    { name: "Uploaded Hunter", pointsHistory: [{ year: 2026, points: 2, tagType: null, claimed: false, northernResident: true }] }
+  ];
+  APP.loadRoster(uploaded);
+  assert.strictEqual(APP.isRosterUploaded(), true);
+  assert.strictEqual(APP.getActiveRoster(), uploaded);
+  const rows = win.document.querySelectorAll("#rosterBody tr");
+  assert.strictEqual(rows.length, 1);
+  assert.strictEqual(rows[0].children[0].textContent, "Uploaded Hunter");
+  const status = win.document.getElementById("dataStatus").textContent;
+  assert.ok(status.includes("1"), "data status should reflect the uploaded roster's hunter count");
 });
 
 console.log(`\n${passed} passed (test.js)`);

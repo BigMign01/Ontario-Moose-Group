@@ -16,7 +16,10 @@
   table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
   th, td { border: 1px solid #ccc; padding: .4rem .6rem; text-align: left; }
   button { cursor: pointer; }
+  #dataSection { margin-top: 1.5rem; }
+  #dataSection input[type="file"] { display: block; margin: .5rem 0; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 </head>
 <body>
 
@@ -42,6 +45,13 @@
   </table>
 </section>
 
+<section id="dataSection">
+  <h2 id="dataHeading">Data</h2>
+  <p id="dataStatus"></p>
+  <input type="file" id="rosterUpload" accept=".xlsx">
+  <a id="templateLink" href="moose-group-points-template.xlsx" download>Download roster template (.xlsx)</a>
+</section>
+
 <script>
 (function () {
   "use strict";
@@ -62,6 +72,10 @@
       appTitle: "WMU 24 Moose Tag Tracker",
       rulesHeading: "Key Rules",
       rosterHeading: "Roster",
+      dataHeading: "Data",
+      dataStatusDemo: (n) => `Showing demo data (${n} hunter${n === 1 ? "" : "s"}). Upload your group's filled-in .xlsx template to replace it.`,
+      dataStatusUploaded: (n) => `Showing uploaded data for ${n} hunter${n === 1 ? "" : "s"}.`,
+      dataStatusError: "Couldn't read that file. Make sure it's the roster template .xlsx with a Hunter/Year/Points row per entry.",
       table: { name: "Name", year: "Year", points: "Points", tag: "Tag", claimed: "Claimed", yes: "Yes", no: "No" },
       ruleLicence: {
         h: "Licence Requirements",
@@ -108,6 +122,10 @@
       appTitle: "Suivi des contingents d'orignal ZGF 24",
       rulesHeading: "Règles clés",
       rosterHeading: "Liste des chasseurs",
+      dataHeading: "Données",
+      dataStatusDemo: (n) => `Affichage des données de démonstration (${n} chasseur${n === 1 ? "" : "s"}). Téléversez le modèle .xlsx rempli de votre groupe pour les remplacer.`,
+      dataStatusUploaded: (n) => `Affichage des données téléversées pour ${n} chasseur${n === 1 ? "" : "s"}.`,
+      dataStatusError: "Impossible de lire ce fichier. Assurez-vous qu'il s'agit du modèle de liste .xlsx avec une ligne Hunter/Year/Points par entrée.",
       table: { name: "Nom", year: "Année", points: "Points", tag: "Contingent", claimed: "Réclamé", yes: "Oui", no: "Non" },
       ruleLicence: {
         h: "Exigences de permis",
@@ -173,28 +191,28 @@
     {
       name: "Alex",
       pointsHistory: [
-        { year: 2023, points: 1, tagType: null, claimed: false },
-        { year: 2024, points: 2, tagType: null, claimed: false },
-        { year: 2025, points: 3, tagType: null, claimed: false },
-        { year: 2026, points: 0, tagType: "Cow/calf", claimed: true }
+        { year: 2023, points: 1, tagType: null, claimed: false, northernResident: false },
+        { year: 2024, points: 2, tagType: null, claimed: false, northernResident: false },
+        { year: 2025, points: 3, tagType: null, claimed: false, northernResident: false },
+        { year: 2026, points: 0, tagType: "Cow/calf", claimed: true, northernResident: false }
       ]
     },
     {
       name: "Mike",
       pointsHistory: [
-        { year: 2023, points: 1, tagType: null, claimed: false },
-        { year: 2024, points: 2, tagType: null, claimed: false },
-        { year: 2025, points: 3, tagType: null, claimed: false },
-        { year: 2026, points: 4, tagType: null, claimed: false }
+        { year: 2023, points: 1, tagType: null, claimed: false, northernResident: false },
+        { year: 2024, points: 2, tagType: null, claimed: false, northernResident: false },
+        { year: 2025, points: 3, tagType: null, claimed: false, northernResident: false },
+        { year: 2026, points: 4, tagType: null, claimed: false, northernResident: false }
       ]
     },
     {
       name: "Steve",
       pointsHistory: [
-        { year: 2023, points: 1, tagType: null, claimed: false },
-        { year: 2024, points: 2, tagType: null, claimed: false },
-        { year: 2025, points: 3, tagType: null, claimed: false },
-        { year: 2026, points: 4, tagType: null, claimed: false }
+        { year: 2023, points: 1, tagType: null, claimed: false, northernResident: false },
+        { year: 2024, points: 2, tagType: null, claimed: false, northernResident: false },
+        { year: 2025, points: 3, tagType: null, claimed: false, northernResident: false },
+        { year: 2026, points: 4, tagType: null, claimed: false, northernResident: false }
       ]
     }
   ];
@@ -272,22 +290,80 @@
 
   // ---------------------------------------------------------------------
   // computeTimeline - MPR comparison helper. NORTHERN_PREFERENCE_POINT is
-  // applied here only, never to a hunter's banked pointsHistory values.
+  // applied here only, never to a hunter's banked pointsHistory values, and
+  // only for hunters whose latest record is flagged northernResident (from
+  // the uploaded roster's NorthernResident column) - it does not apply to
+  // every hunter by default.
   // ---------------------------------------------------------------------
-  function bankedPoints(hunter) {
+  function latestEntry(hunter) {
     const history = hunter.pointsHistory;
-    if (!history || history.length === 0) return 0;
-    return history[history.length - 1].points;
+    if (!history || history.length === 0) return null;
+    return history[history.length - 1];
+  }
+
+  function bankedPoints(hunter) {
+    const entry = latestEntry(hunter);
+    return entry ? entry.points : 0;
+  }
+
+  function isNorthernResident(hunter) {
+    const entry = latestEntry(hunter);
+    return !!(entry && entry.northernResident);
   }
 
   function computeTimeline(hunters) {
     return hunters
-      .map((hunter) => ({
-        name: hunter.name,
-        banked: bankedPoints(hunter),
-        mpr: bankedPoints(hunter) + NORTHERN_PREFERENCE_POINT
-      }))
+      .map((hunter) => {
+        const banked = bankedPoints(hunter);
+        const bonus = isNorthernResident(hunter) ? NORTHERN_PREFERENCE_POINT : 0;
+        return { name: hunter.name, banked, mpr: banked + bonus };
+      })
       .sort((a, b) => b.mpr - a.mpr);
+  }
+
+  // ---------------------------------------------------------------------
+  // parseRosterRows - turns flat spreadsheet rows (one row per hunter per
+  // year, as read from the roster .xlsx template - Hunter/Year/Points/
+  // TagType/Claimed/WMU/Season/MooseType/NorthernResident) into the
+  // HUNTER_SEED-shaped roster this app renders and computes from. This is
+  // the general-purpose ingestion path: any group's filled-in template
+  // produces a roster the same way, regardless of who uploads it.
+  // ---------------------------------------------------------------------
+  function truthyFlag(value) {
+    if (typeof value === "string") return value.trim().toUpperCase() === "Y";
+    return !!value;
+  }
+
+  function parseRosterRows(rows) {
+    const byHunter = new Map();
+    (rows || []).forEach((row) => {
+      const name = String(row.Hunter || row.hunter || "").trim();
+      const year = Number(row.Year ?? row.year);
+      const points = Number(row.Points ?? row.points);
+      if (!name || !Number.isFinite(year) || !Number.isFinite(points)) return;
+
+      const entry = {
+        year,
+        points,
+        tagType: row.TagType || row.tagType || null,
+        claimed: truthyFlag(row.Claimed ?? row.claimed),
+        wmu: row.WMU || row.wmu || null,
+        season: row.Season || row.season || null,
+        mooseType: row.MooseType || row.mooseType || null,
+        northernResident: truthyFlag(row.NorthernResident ?? row.northernResident)
+      };
+
+      if (!byHunter.has(name)) byHunter.set(name, []);
+      byHunter.get(name).push(entry);
+    });
+
+    const roster = [];
+    byHunter.forEach((pointsHistory, name) => {
+      pointsHistory.sort((a, b) => a.year - b.year);
+      roster.push({ name, pointsHistory });
+    });
+    roster.sort((a, b) => a.name.localeCompare(b.name));
+    return roster;
   }
 
   // ---------------------------------------------------------------------
@@ -315,11 +391,14 @@
     });
   }
 
+  let activeRoster = HUNTER_SEED;
+  let activeRosterIsUploaded = false;
+
   function renderRoster() {
     const body = document.getElementById("rosterBody");
     if (!body) return;
     body.innerHTML = "";
-    HUNTER_SEED.forEach((hunter) => {
+    activeRoster.forEach((hunter) => {
       hunter.pointsHistory.forEach((entry) => {
         const tr = document.createElement("tr");
         tr.innerHTML =
@@ -345,7 +424,8 @@
     const map = {
       appTitle: "appTitle",
       rulesHeading: "rulesHeading",
-      rosterHeading: "rosterHeading"
+      rosterHeading: "rosterHeading",
+      dataHeading: "dataHeading"
     };
     Object.keys(map).forEach((key) => {
       const el = document.getElementById(map[key]);
@@ -353,13 +433,49 @@
     });
   }
 
+  function renderDataStatus() {
+    const status = document.getElementById("dataStatus");
+    if (!status) return;
+    const count = activeRoster.length;
+    status.textContent = activeRosterIsUploaded
+      ? t("dataStatusUploaded", count)
+      : t("dataStatusDemo", count);
+  }
+
   function render() {
     renderStaticText();
     renderBanner();
     renderRules();
     renderRoster();
+    renderDataStatus();
     const toggle = document.getElementById("langToggle");
     if (toggle) toggle.textContent = currentLang === "en" ? "FR" : "EN";
+  }
+
+  function loadRoster(roster) {
+    activeRoster = roster;
+    activeRosterIsUploaded = true;
+    render();
+  }
+
+  function handleRosterFile(file) {
+    if (!file || typeof XLSX === "undefined") return;
+    const status = document.getElementById("dataStatus");
+    file
+      .arrayBuffer()
+      .then((buffer) => {
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const sheetName =
+          workbook.SheetNames.find((n) => /points/i.test(n)) ||
+          workbook.SheetNames[workbook.SheetNames.length - 1];
+        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: null });
+        const roster = parseRosterRows(rows);
+        if (roster.length === 0) throw new Error("empty roster");
+        loadRoster(roster);
+      })
+      .catch(() => {
+        if (status) status.textContent = t("dataStatusError");
+      });
   }
 
   function setLang(lang) {
@@ -376,6 +492,13 @@
     document.addEventListener("DOMContentLoaded", function () {
       const toggle = document.getElementById("langToggle");
       if (toggle) toggle.addEventListener("click", toggleLang);
+      const upload = document.getElementById("rosterUpload");
+      if (upload) {
+        upload.addEventListener("change", function (event) {
+          const file = event.target.files && event.target.files[0];
+          handleRosterFile(file);
+        });
+      }
       render();
     });
   }
@@ -390,6 +513,10 @@
       HUNTER_SEED,
       getSeasonPhase,
       computeTimeline,
+      parseRosterRows,
+      loadRoster,
+      getActiveRoster: () => activeRoster,
+      isRosterUploaded: () => activeRosterIsUploaded,
       NORTHERN_PREFERENCE_POINT,
       render
     };
