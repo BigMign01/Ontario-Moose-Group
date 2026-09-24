@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WMU 24 Moose Tag Tracker</title>
+<title>Moose Group Points Tracker</title>
 <style>
   :root { color-scheme: light dark; }
   body { font-family: system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 1rem; }
@@ -18,13 +18,23 @@
   button { cursor: pointer; }
   #dataSection { margin-top: 1.5rem; }
   #dataSection input[type="file"] { display: block; margin: .5rem 0; }
+  .roster-actions { margin-top: .5rem; }
+  #rosterTable input[type="number"] { width: 4.5rem; }
+  #rosterTable input[type="text"] { width: 7rem; }
+  .target-controls { display: flex; flex-wrap: wrap; gap: .75rem 1.25rem; align-items: center; }
+  .target-controls select { margin-left: .35rem; }
+  .warning { color: #a30; }
+  .chart-legend { display: flex; flex-wrap: wrap; gap: .25rem 1rem; margin-top: .5rem; font-size: .85rem; }
+  .chart-legend span { display: inline-flex; align-items: center; gap: .3rem; }
+  .chart-legend i { width: .7rem; height: .7rem; border-radius: 50%; display: inline-block; }
+  #pointsChart { overflow-x: auto; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 </head>
 <body>
 
 <header>
-  <h1 id="appTitle">WMU 24 Moose Tag Tracker</h1>
+  <h1 id="appTitle">Moose Group Points Tracker</h1>
   <button id="langToggle" type="button">FR</button>
 </header>
 
@@ -37,12 +47,36 @@
 
 <section id="rosterSection">
   <h2 id="rosterHeading">Roster</h2>
+  <p id="rosterEditHint"></p>
   <table id="rosterTable">
     <thead>
-      <tr><th>Name</th><th>Year</th><th>Points</th><th>Tag</th><th>Claimed</th></tr>
+      <tr id="rosterTableHead"><th>Name</th><th>Year</th><th>Points</th><th>Tag</th><th>Claimed</th><th>Northern</th><th></th></tr>
     </thead>
     <tbody id="rosterBody"></tbody>
   </table>
+  <div class="roster-actions">
+    <button type="button" id="addHunterBtn" data-action="add-hunter"></button>
+  </div>
+</section>
+
+<section id="targetSection">
+  <h2 id="targetHeading">Group Target</h2>
+  <p id="targetDesc"></p>
+  <div class="target-controls">
+    <label><span id="targetWmuLabel">WMU</span> <select id="targetWmu"></select></label>
+    <label><span id="targetTypeLabel">Tag type</span> <select id="targetMooseType"></select></label>
+    <label><span id="targetSeasonLabel">Season</span> <select id="targetSeason"></select></label>
+    <label><span id="targetStageLabel">Stage</span> <select id="targetStage"></select></label>
+    <label><span id="targetChoiceLabel">Choice</span> <select id="targetChoice"></select></label>
+  </div>
+  <p id="targetNoData" class="warning" hidden></p>
+</section>
+
+<section id="chartSection">
+  <h2 id="chartHeading">Points Over Time</h2>
+  <p id="chartDesc"></p>
+  <div id="pointsChart"></div>
+  <div id="chartLegend" class="chart-legend"></div>
 </section>
 
 <section id="forecastSection">
@@ -50,7 +84,7 @@
   <p id="forecastDesc"></p>
   <table id="forecastTable">
     <thead>
-      <tr><th>Year</th><th>Projected bull cutoff</th><th>Expected bulls drawn</th><th>Status</th></tr>
+      <tr><th>Year</th><th>Projected cutoff</th><th>Expected tags drawn</th><th>Status</th></tr>
     </thead>
     <tbody id="forecastBody"></tbody>
   </table>
@@ -61,6 +95,7 @@
   <p id="dataStatus"></p>
   <input type="file" id="rosterUpload" accept=".xlsx">
   <a id="templateLink" href="moose-group-points-template.xlsx" download>Download roster template (.xlsx)</a>
+  <button type="button" id="exportBtn" data-action="export-roster"></button>
 </section>
 
 <script>
@@ -80,7 +115,7 @@
   // ---------------------------------------------------------------------
   const I18N = {
     en: {
-      appTitle: "WMU 24 Moose Tag Tracker",
+      appTitle: "Moose Group Points Tracker",
       rulesHeading: "Key Rules",
       rosterHeading: "Roster",
       dataHeading: "Data",
@@ -88,12 +123,27 @@
       dataStatusUploaded: (n) => `Showing uploaded data for ${n} hunter${n === 1 ? "" : "s"}.`,
       dataStatusError: "Couldn't read that file. Make sure it's the roster template .xlsx with a Hunter/Year/Points row per entry.",
       forecastHeading: "Group Staggering Forecast",
-      forecastDesc: "Bull is everyone's first choice, so this projects how many hunters are likely to draw a WMU 24 bull tag each year. The cutoff line is fitted to five years of real MNR draw data, not a guessed number, and each hunter's odds ramp up rather than flip on/off at the line. Treat this as a planning signal: a gap year means the group is unlikely to have a bull tag holder that year; a stacked year means several hunters are likely ready at once, when the party only needs one.",
-      forecastTable: { year: "Year", cutoff: "Projected bull cutoff", expected: "Expected bulls drawn", status: "Status" },
+      forecastDesc: "This projects how many hunters are likely to draw the group's target tag each year. The cutoff line is fitted to five years of real MNR draw data for whatever WMU/tag type/season you pick below, not a guessed number, and each hunter's odds ramp up rather than flip on/off at the line. Treat this as a planning signal: a gap year means the group is unlikely to have a tag holder that year; a stacked year means several hunters are likely ready at once, when the party only needs one.",
+      forecastTable: { year: "Year", cutoff: "Projected cutoff", expected: "Expected tags drawn", status: "Status" },
       forecastStatusGap: "Gap",
       forecastStatusOk: "Covered",
       forecastStatusStacked: "Stacked",
-      table: { name: "Name", year: "Year", points: "Points", tag: "Tag", claimed: "Claimed", yes: "Yes", no: "No" },
+      targetHeading: "Group Target",
+      targetDesc: "What the group is chasing, and the WMU it's chasing it in. This drives the forecast and chart below, using real Ontario draw data for the combination you pick.",
+      targetWmuLabel: "WMU",
+      targetTypeLabel: "Tag type",
+      targetSeasonLabel: "Season",
+      targetStageLabel: "Stage",
+      targetChoiceLabel: "Choice",
+      targetNoData: "No MNR draw data was ever fully awarded for this exact combination — try a different season, stage, or choice.",
+      chartHeading: "Points Over Time",
+      chartDesc: "Each hunter's real point history, plus the same forward projection the forecast uses. The dashed line marks the current year.",
+      rosterEditHint: "Points, tag, claimed, and Northern status are editable directly in the table — changes save automatically in this browser.",
+      addHunterBtn: "+ Add hunter",
+      addHunterPrompt: "Hunter's name:",
+      addYearBtn: "+ Add year",
+      exportBtn: "Download updated .xlsx",
+      table: { name: "Name", year: "Year", points: "Points", tag: "Tag", claimed: "Claimed", northern: "Northern", yes: "Yes", no: "No" },
       ruleLicence: {
         h: "Licence Requirements",
         p: "Every hunter in the party must hold a valid Outdoors Card and moose licence tag validation for the current season before heading into the field."
@@ -136,7 +186,7 @@
       }
     },
     fr: {
-      appTitle: "Suivi des contingents d'orignal ZGF 24",
+      appTitle: "Suivi de points du groupe d'orignal",
       rulesHeading: "Règles clés",
       rosterHeading: "Liste des chasseurs",
       dataHeading: "Données",
@@ -144,12 +194,27 @@
       dataStatusUploaded: (n) => `Affichage des données téléversées pour ${n} chasseur${n === 1 ? "" : "s"}.`,
       dataStatusError: "Impossible de lire ce fichier. Assurez-vous qu'il s'agit du modèle de liste .xlsx avec une ligne Hunter/Year/Points par entrée.",
       forecastHeading: "Prévision d'étalement du groupe",
-      forecastDesc: "Le bull étant le premier choix de tout le monde, ceci projette combien de chasseurs sont susceptibles de tirer un contingent de bull en ZGF 24 chaque année. La ligne de seuil est ajustée sur cinq ans de vraies données de tirage du MRN, pas un chiffre deviné, et les chances de chaque chasseur augmentent progressivement plutôt que de basculer d'un coup au seuil. À prendre comme signal de planification : une année \"trou\" veut dire que le groupe risque de ne pas avoir de détenteur de contingent de bull cette année-là; une année \"empilée\" veut dire que plusieurs chasseurs sont probablement prêts en même temps, alors que le groupe n'a besoin que d'un seul contingent.",
-      forecastTable: { year: "Année", cutoff: "Seuil de bull projeté", expected: "Bulls attendus", status: "Statut" },
+      forecastDesc: "Ceci projette combien de chasseurs sont susceptibles de tirer le contingent cible du groupe chaque année. La ligne de seuil est ajustée sur cinq ans de vraies données de tirage du MRN pour la ZGF/type de contingent/saison choisis ci-dessous, pas un chiffre deviné, et les chances de chaque chasseur augmentent progressivement plutôt que de basculer d'un coup au seuil. À prendre comme signal de planification : une année \"trou\" veut dire que le groupe risque de ne pas avoir de détenteur de contingent cette année-là; une année \"empilée\" veut dire que plusieurs chasseurs sont probablement prêts en même temps, alors que le groupe n'a besoin que d'un seul contingent.",
+      forecastTable: { year: "Année", cutoff: "Seuil projeté", expected: "Contingents attendus", status: "Statut" },
       forecastStatusGap: "Trou",
       forecastStatusOk: "Couvert",
       forecastStatusStacked: "Empilé",
-      table: { name: "Nom", year: "Année", points: "Points", tag: "Contingent", claimed: "Réclamé", yes: "Oui", no: "Non" },
+      targetHeading: "Cible du groupe",
+      targetDesc: "Ce que le groupe vise, et la ZGF visée. Ceci pilote la prévision et le graphique ci-dessous, à partir des vraies données de tirage de l'Ontario pour la combinaison choisie.",
+      targetWmuLabel: "ZGF",
+      targetTypeLabel: "Type de contingent",
+      targetSeasonLabel: "Saison",
+      targetStageLabel: "Étape",
+      targetChoiceLabel: "Choix",
+      targetNoData: "Aucune donnée de tirage du MRN n'a jamais été pleinement attribuée pour cette combinaison exacte — essayez une autre saison, étape ou choix.",
+      chartHeading: "Évolution des points",
+      chartDesc: "L'historique réel des points de chaque chasseur, plus la même projection utilisée par la prévision. La ligne pointillée marque l'année en cours.",
+      rosterEditHint: "Les points, le contingent, le statut réclamé et le statut Nord sont modifiables directement dans le tableau — les changements se sauvegardent automatiquement dans ce navigateur.",
+      addHunterBtn: "+ Ajouter un chasseur",
+      addHunterPrompt: "Nom du chasseur :",
+      addYearBtn: "+ Ajouter une année",
+      exportBtn: "Télécharger le .xlsx mis à jour",
+      table: { name: "Nom", year: "Année", points: "Points", tag: "Contingent", claimed: "Réclamé", northern: "Nord", yes: "Oui", no: "Non" },
       ruleLicence: {
         h: "Exigences de permis",
         p: "Chaque chasseur du groupe doit posséder une carte Plein air valide et un contingent d'orignal validé pour la saison en cours avant de partir sur le terrain."
@@ -345,27 +410,68 @@
   }
 
   // ---------------------------------------------------------------------
-  // WMU24_TRENDS - real full-award point cutoffs for WMU 24, Bull / Gun /
-  // Primary / 1st choice, from Ontario's own moose tag allocation stats
-  // (2021-2025). This is the group's real bottleneck: bull is everyone's
-  // stated first choice, and the cutoff to guarantee one has held in the
-  // 10-12 point range rather than moving in a clean straight line.
+  // MOOSE_TRENDS - real full-award point cutoffs for every Ontario WMU,
+  // from the MNR's own moose tag allocation stats (2021-2025), keyed
+  // MOOSE_TRENDS[wmu][mooseType][season][stage][choice] -> [[year, cutoff], ...].
+  // "Full-award cutoff" = the lowest point total that got 100% of
+  // applicants at that level a tag, for that WMU/type/season/stage/choice/
+  // year. A missing path means no year on record ever reached a clean
+  // full-award bracket for that combination (either no applicants, or it
+  // stayed competitive at every point level).
   // ---------------------------------------------------------------------
-  const WMU24_TRENDS = {
-    bullGunPrimary: [
-      { year: 2021, cutoff: 11 },
-      { year: 2022, cutoff: 10 },
-      { year: 2023, cutoff: 12 },
-      { year: 2024, cutoff: 12 },
-      { year: 2025, cutoff: 12 }
-    ]
-  };
+  const MOOSE_TRENDS = {"1A":{"Bull":{"Gun":{"Primary":{"1":[[2021,2],[2022,0],[2023,0],[2024,1],[2025,0]],"2":[[2022,4],[2023,0]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,1],[2025,0]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2022,14],[2023,0],[2024,0],[2025,0]],"2":[[2021,2],[2022,5],[2024,9]],"3":[[2021,18],[2023,10]]},"Second Chance":{"1":[[2021,6],[2022,1],[2023,1],[2024,0],[2025,1]]}}},"Cow/calf":{"Gun":{"Primary":{"1":[[2021,0],[2022,1],[2023,0],[2024,0],[2025,1]],"2":[[2021,1],[2024,22],[2025,9]],"3":[[2023,2],[2025,0]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,1],[2024,1],[2025,0]]}}}},"1C":{"Bull":{"Gun":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"3":[[2022,3],[2025,8]],"2":[[2022,10],[2024,5]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2024,0],[2025,0]],"2":[[2024,0],[2025,0]],"3":[[2022,6],[2025,5]]},"Second Chance":{"1":[[2021,0],[2022,2],[2023,0],[2024,0]]}}},"Cow/calf":{"Gun":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"3":[[2021,7],[2022,7],[2024,4]],"2":[[2022,5],[2023,6]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}}}},"1D":{"Bull":{"Gun":{"Primary":{"1":[[2021,1],[2022,1],[2023,1],[2024,1],[2025,1]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}}},"Calf":{"All Seasons":{"Primary":{"3":[[2025,0]],"1":[[2022,2],[2023,6]],"2":[[2021,5],[2022,3]]},"Second Chance":{"1":[[2021,2],[2022,1],[2023,1],[2024,1],[2025,8]]}}},"Cow/calf":{"Gun":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"3":[[2023,2],[2025,13]],"2":[[2022,3]]},"Second Chance":{"1":[[2021,1],[2023,0],[2024,1],[2025,6]]}}}},"2":{"Bull":{"Bow":{"Primary":{"1":[[2021,2],[2022,2],[2023,2],[2024,2],[2025,2]]},"Second Chance":{"1":[[2021,0],[2022,2],[2023,0],[2024,2],[2025,2]]}},"Gun":{"Primary":{"1":[[2021,2],[2022,2],[2023,2],[2024,2],[2025,2]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,2],[2024,3],[2025,2]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,1],[2022,1],[2023,1],[2024,1],[2025,2]],"2":[[2022,0],[2024,10]]},"Second Chance":{"1":[[2022,5],[2023,0],[2025,1]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,0],[2022,0],[2023,8],[2025,1]],"2":[[2022,1],[2024,0],[2025,0]],"3":[[2022,0],[2024,1],[2025,5]]},"Second Chance":{"1":[[2021,0],[2023,1],[2025,8]]}},"Gun":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2023,0]],"3":[[2021,4]]},"Second Chance":{"1":[[2021,1],[2022,1],[2023,0],[2024,0],[2025,0]]}}}},"3":{"Bull":{"Bow":{"Primary":{"1":[[2021,5],[2022,5],[2023,5],[2024,5],[2025,6]]},"Second Chance":{"1":[[2022,5],[2023,5],[2024,5],[2025,5]]}},"Gun":{"Primary":{"1":[[2021,6],[2022,5],[2023,6],[2024,6],[2025,7]]},"Second Chance":{"1":[[2021,5],[2022,5],[2023,5],[2024,6],[2025,6]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2023,3],[2024,0],[2025,3]]},"Second Chance":{"1":[[2021,0],[2022,1],[2023,1],[2024,0],[2025,0]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2021,0],[2022,2],[2023,0],[2024,0],[2025,0]],"3":[[2021,3],[2023,2],[2024,2]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,1],[2025,0]]}},"Gun":{"Primary":{"1":[[2021,2],[2022,2],[2023,2],[2024,2],[2025,2]]},"Second Chance":{"1":[[2021,1],[2022,1],[2023,2],[2024,2],[2025,2]]}}}},"4":{"Bull":{"Bow":{"Primary":{"1":[[2021,5],[2022,6],[2023,6],[2024,6],[2025,6]]},"Second Chance":{"1":[[2021,3],[2022,5],[2023,5],[2024,6],[2025,6]]}},"Gun":{"Primary":{"1":[[2021,6],[2022,6],[2023,6],[2024,7],[2025,7]]},"Second Chance":{"1":[[2021,8],[2022,5],[2023,5],[2024,6],[2025,6]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2021,2],[2022,0],[2023,0],[2024,2],[2025,1]],"3":[[2021,2],[2022,5],[2024,2],[2025,0]]},"Second Chance":{"1":[[2022,0],[2024,0],[2025,0]]}},"Gun":{"Primary":{"1":[[2021,3],[2022,3],[2023,3],[2024,3],[2025,3]]},"Second Chance":{"1":[[2021,2],[2022,3],[2023,2],[2024,3],[2025,3]]}}}},"5":{"Bull":{"Bow":{"Primary":{"1":[[2021,6],[2022,7],[2023,8],[2024,8],[2025,9]]},"Second Chance":{"1":[[2021,7],[2023,7],[2024,8],[2025,10]]}},"Gun":{"Primary":{"1":[[2021,10],[2022,10],[2023,9],[2024,10],[2025,10]]},"Second Chance":{"1":[[2021,9],[2022,8],[2023,9],[2024,9],[2025,9]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2022,13],[2023,3],[2024,4],[2025,3]],"3":[[2022,8],[2024,7],[2025,7]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,1],[2025,1]],"2":[[2021,0],[2022,1],[2023,2],[2024,3],[2025,1]],"3":[[2022,4],[2023,4],[2024,3]]},"Second Chance":{"1":[[2021,1],[2022,0],[2023,0],[2024,1],[2025,0]]}},"Gun":{"Primary":{"1":[[2021,6],[2022,6],[2023,5],[2024,5],[2025,6]]},"Second Chance":{"1":[[2021,6],[2022,5],[2023,5],[2024,5],[2025,6]]}}}},"6":{"Bull":{"Bow":{"Primary":{"1":[[2025,3]]},"Second Chance":{"1":[[2025,3]]}},"Gun":{"Primary":{"1":[[2021,8],[2022,8],[2024,8],[2025,5]]},"Second Chance":{"1":[[2021,7],[2023,8],[2025,7]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,2],[2022,1],[2023,1],[2024,3],[2025,1]],"3":[[2025,3]],"2":[[2023,1]]},"Second Chance":{"1":[[2021,4],[2022,2],[2025,1]]}}},"Cow/calf":{"Bow":{"Primary":{"2":[[2025,1]],"3":[[2025,5]]}},"Gun":{"Primary":{"1":[[2021,5],[2023,6],[2024,6],[2025,0]]},"Second Chance":{"1":[[2025,3]]}}}},"7A":{"Calf":{"All Seasons":{"Primary":{"1":[[2021,2],[2022,3],[2023,0],[2025,1]],"3":[[2024,5]]},"Second Chance":{"1":[[2021,4],[2024,2],[2025,2]]}}}},"7B":{"Bull":{"Bow":{"Primary":{"1":[[2025,1]]},"Second Chance":{"1":[[2025,9]]}},"Gun":{"Primary":{"1":[[2022,9],[2024,7],[2025,6]]},"Second Chance":{"1":[[2025,7]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,3],[2022,1],[2023,3],[2024,2],[2025,1]],"3":[[2025,1]]},"Second Chance":{"1":[[2021,1],[2022,8],[2025,4]]}}},"Cow/calf":{"Gun":{"Primary":{"1":[[2021,4],[2023,5],[2024,3],[2025,0]]},"Second Chance":{"1":[[2025,1]]}}}},"8":{"Bull":{"Bow":{"Primary":{"1":[[2021,8],[2022,6],[2023,8],[2024,8],[2025,5]]},"Second Chance":{"1":[[2022,7],[2023,7],[2024,8],[2025,5]]}},"Gun":{"Primary":{"1":[[2021,10],[2022,10],[2023,9],[2024,10],[2025,8]]},"Second Chance":{"1":[[2022,8],[2024,18],[2025,9]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,1],[2024,1],[2025,0]],"3":[[2021,7],[2022,4],[2023,4],[2024,5],[2025,2]],"2":[[2021,1],[2023,1],[2024,4]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,1],[2024,2],[2025,1]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,3],[2022,2],[2023,1],[2024,1],[2025,0]],"3":[[2023,2],[2024,6],[2025,1]],"2":[[2023,6],[2024,2]]},"Second Chance":{"1":[[2021,1],[2025,1]]}},"Gun":{"Primary":{"1":[[2021,7],[2022,5],[2023,6],[2024,6],[2025,4]]},"Second Chance":{"1":[[2022,6],[2023,6],[2024,6],[2025,4]]}}}},"9A":{"Bull":{"Bow":{"Primary":{"1":[[2021,10],[2022,7],[2023,6],[2024,7],[2025,8]]},"Second Chance":{"1":[[2021,7],[2024,5]]}},"Gun":{"Primary":{"1":[[2021,12],[2022,12],[2023,11],[2024,15],[2025,11]]},"Second Chance":{"1":[[2021,22],[2024,10],[2025,12]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,2],[2022,2],[2023,0],[2024,2],[2025,1]],"2":[[2025,3]],"3":[[2025,8]]},"Second Chance":{"1":[[2021,4],[2022,1],[2023,0],[2024,2],[2025,1]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2022,0],[2023,2],[2024,2],[2025,1]],"2":[[2021,1],[2022,4],[2025,2]],"3":[[2021,2]]},"Second Chance":{"1":[[2021,1],[2023,3],[2024,2]]}},"Gun":{"Primary":{"1":[[2021,9],[2022,8],[2023,8],[2024,8],[2025,5]]},"Second Chance":{"1":[[2022,11],[2023,8],[2025,6]]}}}},"9B":{"Bull":{"Bow":{"Primary":{"1":[[2021,8],[2022,7],[2023,7],[2024,7],[2025,7]]},"Second Chance":{"1":[[2024,5],[2025,10]]}},"Gun":{"Primary":{"1":[[2021,10],[2022,10],[2023,10],[2024,10],[2025,10]]},"Second Chance":{"1":[[2023,8],[2025,10]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,1],[2022,1],[2023,1],[2024,1],[2025,0]],"3":[[2023,4],[2024,5],[2025,1]],"2":[[2022,4]]},"Second Chance":{"1":[[2021,1],[2022,1],[2023,4],[2024,0],[2025,1]]}}},"Cow/calf":{"Bow":{"Primary":{"2":[[2022,1],[2025,3]],"3":[[2023,0],[2024,2],[2025,1]],"1":[[2022,2],[2024,0]]},"Second Chance":{"1":[[2021,1],[2024,1],[2025,2]]}},"Gun":{"Primary":{"1":[[2021,6],[2022,7],[2023,8],[2024,7],[2025,5]]},"Second Chance":{"1":[[2021,10],[2022,7],[2024,8],[2025,5]]}}}},"11A":{"Bull":{"Bow":{"Primary":{"1":[[2021,12],[2022,7],[2023,10],[2024,9],[2025,8]]},"Second Chance":{"1":[[2023,8],[2024,9],[2025,8]]}},"Gun":{"Primary":{"1":[[2021,9],[2022,12],[2023,8],[2024,9],[2025,10]]},"Second Chance":{"1":[[2023,8],[2024,9],[2025,9]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2021,0],[2022,5],[2023,0],[2025,5]],"3":[[2021,8],[2023,0],[2024,5],[2025,4]]},"Second Chance":{"1":[[2021,1],[2022,0],[2023,1],[2024,0],[2025,0]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,1],[2023,0],[2024,0],[2025,1]],"2":[[2021,0],[2022,12],[2023,0],[2024,3]],"3":[[2022,1],[2023,1],[2024,1]]},"Second Chance":{"1":[[2022,1],[2024,2],[2025,5]]}},"Gun":{"Primary":{"1":[[2021,8],[2022,7],[2023,4],[2024,6],[2025,6]]},"Second Chance":{"1":[[2021,7],[2022,7],[2023,6],[2024,7],[2025,6]]}}}},"11B":{"Bull":{"Bow":{"Primary":{"1":[[2021,10],[2022,10],[2023,7],[2024,8],[2025,9]]},"Second Chance":{"1":[[2024,9]]}},"Gun":{"Primary":{"1":[[2021,11],[2022,10],[2023,10],[2024,11],[2025,11]]},"Second Chance":{"1":[[2021,9],[2022,10],[2023,11],[2024,12]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,1],[2022,0],[2023,0],[2024,0],[2025,1]],"2":[[2022,5],[2023,2],[2024,4]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,1]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,2],[2022,0],[2023,0],[2024,2],[2025,4]],"2":[[2022,3],[2023,5]]},"Second Chance":{"1":[[2021,2],[2022,0],[2023,1],[2024,2],[2025,1]]}},"Gun":{"Primary":{"1":[[2021,7],[2022,8],[2023,8],[2024,9],[2025,9]]},"Second Chance":{"1":[[2021,8],[2022,6],[2023,10],[2025,9]]}}}},"12A":{"Bull":{"Bow":{"Primary":{"1":[[2021,10],[2022,8],[2023,7],[2024,8],[2025,9]]},"Second Chance":{"1":[[2021,7],[2022,7],[2024,7],[2025,9]]}},"Gun":{"Primary":{"1":[[2021,9],[2022,9],[2023,9],[2024,10],[2025,10]]},"Second Chance":{"1":[[2021,8],[2022,8],[2023,9],[2024,9],[2025,10]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2022,3],[2023,4],[2024,3],[2025,5]],"3":[[2021,8],[2022,6],[2023,4],[2024,7],[2025,0]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,1],[2024,0],[2025,1]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,0],[2022,0],[2023,1],[2024,0],[2025,0]],"2":[[2021,0],[2022,1],[2023,0],[2024,0],[2025,2]],"3":[[2021,3],[2022,5],[2023,1],[2024,1],[2025,5]]},"Second Chance":{"1":[[2021,0],[2022,7],[2023,1],[2024,0],[2025,1]]}},"Gun":{"Primary":{"1":[[2021,7],[2022,7],[2023,7],[2024,7],[2025,8]]},"Second Chance":{"1":[[2021,7],[2022,8],[2023,7],[2024,7],[2025,7]]}}}},"12B":{"Bull":{"Bow":{"Primary":{"1":[[2021,10],[2022,9],[2023,10],[2024,10],[2025,11]]},"Second Chance":{"1":[[2021,8],[2022,8],[2023,9],[2025,10]]}},"Gun":{"Primary":{"1":[[2021,10],[2022,10],[2023,10],[2024,11],[2025,11]]},"Second Chance":{"1":[[2021,9],[2022,9],[2023,10],[2024,11],[2025,11]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,1],[2024,0],[2025,0]],"2":[[2021,8],[2024,8],[2025,5]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,0],[2022,1],[2023,1],[2024,0],[2025,0]],"2":[[2021,3],[2022,2],[2023,5],[2024,4],[2025,5]],"3":[[2021,4],[2022,2]]},"Second Chance":{"1":[[2022,1],[2023,0],[2024,2],[2025,0]]}},"Gun":{"Primary":{"1":[[2021,8],[2022,8],[2023,8],[2024,8],[2025,9]]},"Second Chance":{"1":[[2021,8],[2022,7],[2023,8],[2024,8],[2025,9]]}}}},"13":{"Bull":{"Bow":{"Primary":{"1":[[2021,8],[2022,13],[2023,11],[2024,10],[2025,12]]},"Second Chance":{"1":[[2021,7],[2022,10]]}},"Gun":{"Primary":{"1":[[2021,11],[2022,11],[2023,12],[2024,13],[2025,13]]},"Second Chance":{"1":[[2022,11],[2024,12]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,2],[2022,3],[2023,3],[2024,3],[2025,4]]},"Second Chance":{"1":[[2021,3],[2022,6],[2023,3],[2024,4],[2025,5]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,1],[2022,1],[2023,4],[2024,2],[2025,2]],"2":[[2021,5],[2022,7],[2025,4]]},"Second Chance":{"1":[[2021,1],[2022,1],[2024,4],[2025,6]]}},"Gun":{"Primary":{"1":[[2021,9],[2022,10],[2023,11],[2024,12],[2025,12]]},"Second Chance":{"1":[[2021,11],[2023,11],[2024,12]]}}}},"14":{"Bull":{"Bow":{"Primary":{"1":[[2021,7],[2022,6],[2023,6],[2024,6],[2025,9]]},"Second Chance":{"1":[[2021,9],[2022,5],[2023,6],[2024,7]]}},"Gun":{"Primary":{"1":[[2021,6],[2022,7],[2023,6],[2024,6],[2025,11]]},"Second Chance":{"1":[[2021,4],[2022,5],[2023,5],[2024,7],[2025,8]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,1],[2022,1],[2023,1],[2024,0],[2025,1]],"3":[[2021,4],[2022,0],[2023,0],[2024,0],[2025,3]],"2":[[2022,0],[2023,2],[2024,0]]},"Second Chance":{"1":[[2021,3],[2022,0],[2023,1],[2025,1]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,1],[2022,1],[2023,1],[2024,1],[2025,1]],"2":[[2021,0],[2022,0],[2023,3],[2024,2],[2025,4]],"3":[[2021,0],[2023,0]]},"Second Chance":{"1":[[2021,2],[2022,2],[2025,1]]}},"Gun":{"Primary":{"1":[[2021,3],[2022,2],[2023,2],[2024,2],[2025,4]]},"Second Chance":{"1":[[2021,3],[2022,0],[2023,1],[2024,2]]}}}},"15A":{"Bull":{"Bow":{"Primary":{"1":[[2021,8],[2022,7],[2023,7],[2024,8],[2025,8]]},"Second Chance":{"1":[[2021,6],[2022,7],[2023,7],[2024,8],[2025,8]]}},"Gun":{"Primary":{"1":[[2021,9],[2022,9],[2023,9],[2024,9],[2025,9]]},"Second Chance":{"1":[[2021,9],[2022,9],[2023,8],[2024,8],[2025,8]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2022,4],[2023,4],[2024,3],[2025,3]],"3":[[2023,4],[2025,7]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2021,3],[2022,4],[2023,6],[2025,4]],"3":[[2021,6],[2022,6]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,1],[2024,0],[2025,0]]}},"Gun":{"Primary":{"1":[[2021,6],[2022,6],[2023,6],[2024,6],[2025,5]]},"Second Chance":{"1":[[2021,6],[2022,6],[2023,5],[2024,5],[2025,5]]}}}},"15B":{"Bull":{"Bow":{"Primary":{"1":[[2021,8],[2022,7],[2023,7],[2024,7],[2025,7]]},"Second Chance":{"1":[[2021,7],[2022,6],[2023,6],[2024,6],[2025,7]]}},"Gun":{"Primary":{"1":[[2021,6],[2022,5],[2023,5],[2024,5],[2025,6]]},"Second Chance":{"1":[[2021,5],[2022,4],[2023,4],[2024,5],[2025,5]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2024,4],[2025,4]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2021,5],[2022,5],[2023,5],[2024,4],[2025,5]],"3":[[2023,3],[2024,4]]},"Second Chance":{"1":[[2021,0],[2022,1],[2023,0],[2024,0],[2025,0]]}},"Gun":{"Primary":{"1":[[2021,3],[2022,2],[2023,2],[2024,2],[2025,2]]},"Second Chance":{"1":[[2021,2],[2022,2],[2023,2],[2024,2],[2025,2]]}}}},"16A":{"Bull":{"Gun":{"Primary":{"1":[[2021,1],[2022,2],[2023,1],[2024,1],[2025,2]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,1],[2025,2]]}}},"Calf":{"All Seasons":{"Second Chance":{"1":[[2021,6],[2022,1],[2024,12],[2025,1]]},"Primary":{"2":[[2024,2]],"1":[[2021,1],[2022,0],[2023,2]]}}},"Cow/calf":{"Gun":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"3":[[2022,3],[2025,6]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}}}},"16B":{"Bull":{"Gun":{"Primary":{"1":[[2021,5],[2022,5],[2023,5],[2024,5],[2025,5]]},"Second Chance":{"1":[[2021,4],[2022,4],[2023,4],[2024,4],[2025,4]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2021,3],[2023,1],[2025,2]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2025,0]]}}},"Cow/calf":{"Gun":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}}}},"16C":{"Bull":{"Gun":{"Primary":{"1":[[2021,3],[2022,3],[2023,3],[2024,4],[2025,4]]},"Second Chance":{"1":[[2021,2],[2022,2],[2023,3],[2024,4],[2025,4]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,1],[2023,0],[2025,0]],"2":[[2021,1]]},"Second Chance":{"1":[[2021,1],[2022,4],[2023,1]]}}},"Cow/calf":{"Gun":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2023,5],[2024,2]],"3":[[2023,5]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}}}},"17":{"Bull":{"Gun":{"Primary":{"1":[[2021,6],[2022,6],[2023,8],[2024,8],[2025,8]]},"Second Chance":{"1":[[2021,5],[2022,5],[2023,8],[2024,10],[2025,8]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,1],[2024,1],[2025,1]],"3":[[2025,0]],"2":[[2021,5],[2023,1],[2024,4]]},"Second Chance":{"1":[[2021,1],[2022,0],[2023,0],[2024,1],[2025,0]]}}},"Cow/calf":{"Gun":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2023,5],[2025,5]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}}}},"18A":{"Bull":{"Bow":{"Primary":{"1":[[2021,6],[2022,6],[2023,9],[2024,10],[2025,8]]},"Second Chance":{"1":[[2021,5],[2022,3],[2023,12],[2024,8],[2025,9]]}},"Gun":{"Primary":{"1":[[2021,4],[2022,4],[2023,10],[2024,9],[2025,10]]},"Second Chance":{"1":[[2021,2],[2022,2],[2023,8],[2024,8],[2025,8]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,1],[2024,1],[2025,2]],"2":[[2022,0]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,0],[2022,0],[2023,3],[2024,2],[2025,1]],"2":[[2021,2],[2022,2]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,1],[2024,0],[2025,0]]}},"Gun":{"Primary":{"1":[[2021,2],[2022,2],[2023,5],[2024,5],[2025,5]]},"Second Chance":{"1":[[2021,1],[2022,1],[2023,5],[2024,7],[2025,5]]}}}},"18B":{"Bull":{"Bow":{"Primary":{"1":[[2021,8],[2022,8],[2023,13],[2024,9],[2025,12]]},"Second Chance":{"1":[[2021,7],[2022,6],[2023,9],[2024,12]]}},"Gun":{"Primary":{"1":[[2021,1],[2022,2],[2023,4],[2024,5],[2025,5]]},"Second Chance":{"1":[[2021,0],[2022,1],[2023,5],[2024,4],[2025,5]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,1],[2023,0],[2024,0],[2025,0]],"2":[[2023,3],[2025,1]],"3":[[2022,5],[2023,6],[2024,6]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,1],[2024,1],[2025,0]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,1],[2022,3],[2023,3],[2024,4],[2025,4]]},"Second Chance":{"1":[[2021,1],[2022,2],[2023,7],[2024,9],[2025,4]]}},"Gun":{"Primary":{"1":[[2021,0],[2022,0],[2023,2],[2024,2],[2025,2]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,2],[2024,2],[2025,2]]}}}},"19":{"Bull":{"Bow":{"Primary":{"1":[[2021,6],[2022,6],[2023,7],[2024,7],[2025,8]]},"Second Chance":{"1":[[2021,6],[2022,6],[2023,6],[2024,6],[2025,7]]}},"Gun":{"Primary":{"1":[[2021,5],[2022,5],[2023,6],[2024,6],[2025,7]]},"Second Chance":{"1":[[2021,5],[2022,4],[2023,5],[2024,5],[2025,6]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2025,12]],"3":[[2023,4]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,2]],"2":[[2021,5],[2022,5],[2023,6],[2024,8]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}},"Gun":{"Primary":{"1":[[2021,3],[2022,4],[2023,3],[2024,3],[2025,4]]},"Second Chance":{"1":[[2021,3],[2022,3],[2023,3],[2024,3],[2025,5]]}}}},"21A":{"Bull":{"Bow":{"Primary":{"1":[[2021,8],[2022,8],[2023,8],[2024,8],[2025,9]]},"Second Chance":{"1":[[2021,7],[2022,7],[2023,7],[2024,7]]}},"Gun":{"Primary":{"1":[[2021,5],[2022,5],[2023,6],[2024,6],[2025,8]]},"Second Chance":{"1":[[2021,4],[2022,5],[2023,5],[2024,6],[2025,7]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2022,5],[2023,4],[2024,5]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,1]],"2":[[2021,4],[2022,5],[2023,5],[2024,4]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}},"Gun":{"Primary":{"1":[[2021,2],[2022,2],[2023,3],[2024,3],[2025,4]]},"Second Chance":{"1":[[2021,2],[2022,2],[2023,2],[2024,3],[2025,4]]}}}},"21B":{"Bull":{"Bow":{"Primary":{"1":[[2021,10],[2022,10],[2023,10],[2024,9],[2025,10]]},"Second Chance":{"1":[[2021,10],[2022,9],[2023,9],[2024,9],[2025,10]]}},"Gun":{"Primary":{"1":[[2021,9],[2022,9],[2023,9],[2024,9],[2025,10]]},"Second Chance":{"1":[[2021,9],[2022,8],[2023,9],[2024,9],[2025,10]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,2],[2022,0],[2023,0],[2024,0],[2025,1]],"2":[[2022,5],[2023,5],[2024,5]]},"Second Chance":{"1":[[2021,2],[2022,0],[2023,0],[2024,0],[2025,2]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,3],[2022,2],[2023,2],[2024,2],[2025,4]]},"Second Chance":{"1":[[2021,1],[2022,1],[2023,2],[2024,1],[2025,3]]}},"Gun":{"Primary":{"1":[[2021,6],[2022,7],[2023,7],[2024,7],[2025,8]]},"Second Chance":{"1":[[2021,6],[2022,6],[2023,6],[2024,7],[2025,8]]}}}},"22":{"Bull":{"Bow":{"Primary":{"1":[[2021,10],[2022,13],[2023,11],[2024,10],[2025,15]]},"Second Chance":{"1":[[2021,9],[2023,9]]}},"Gun":{"Primary":{"1":[[2021,11],[2022,11],[2023,11],[2024,11],[2025,12]]},"Second Chance":{"1":[[2021,10],[2022,10],[2023,10],[2024,11],[2025,13]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,1],[2022,0],[2023,0],[2024,0],[2025,2]],"2":[[2022,7],[2023,3],[2024,4]],"3":[[2023,7],[2024,7]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,2]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,4],[2022,2],[2023,3],[2024,2],[2025,4]]},"Second Chance":{"1":[[2021,7],[2022,2],[2023,1],[2024,0]]}},"Gun":{"Primary":{"1":[[2021,8],[2022,8],[2023,9],[2024,8],[2025,9]]},"Second Chance":{"1":[[2021,8],[2022,9],[2023,9],[2024,8],[2025,10]]}}}},"23":{"Bull":{"Bow":{"Primary":{"1":[[2021,10],[2022,10],[2023,10],[2024,10],[2025,10]]},"Second Chance":{"1":[[2021,11],[2023,8],[2024,10],[2025,9]]}},"Gun":{"Primary":{"1":[[2021,11],[2022,11],[2023,9],[2024,10],[2025,10]]},"Second Chance":{"1":[[2021,10],[2022,10],[2023,8],[2024,9],[2025,9]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2021,4],[2023,4],[2024,6],[2025,6]],"3":[[2022,9]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,1]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,2],[2022,2],[2023,3],[2024,1],[2025,3]],"2":[[2024,7]]},"Second Chance":{"1":[[2021,1],[2022,2],[2023,3],[2024,3],[2025,3]]}},"Gun":{"Primary":{"1":[[2021,8],[2022,7],[2023,7],[2024,7],[2025,8]]},"Second Chance":{"1":[[2021,6],[2022,6],[2023,7],[2024,7],[2025,8]]}}}},"24":{"Bull":{"Bow":{"Primary":{"1":[[2021,8],[2022,8],[2023,10],[2024,9],[2025,10]]},"Second Chance":{"1":[[2021,6],[2022,7],[2023,9],[2024,9],[2025,11]]}},"Gun":{"Primary":{"1":[[2021,11],[2022,10],[2023,12],[2024,12],[2025,12]]},"Second Chance":{"1":[[2021,10],[2022,9],[2023,11],[2024,11],[2025,11]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2022,8],[2023,7],[2025,8]],"3":[[2022,5]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,1],[2022,1],[2023,2],[2024,3],[2025,4]]},"Second Chance":{"1":[[2021,0],[2022,1],[2023,2],[2024,3],[2025,4]]}},"Gun":{"Primary":{"1":[[2021,7],[2022,7],[2023,9],[2024,9],[2025,9]]},"Second Chance":{"1":[[2021,7],[2022,7],[2023,9],[2024,9],[2025,10]]}}}},"25":{"Bull":{"Gun":{"Primary":{"1":[[2021,4],[2022,5],[2023,5],[2024,5],[2025,6]]},"Second Chance":{"1":[[2021,3],[2022,4],[2023,5],[2024,6],[2025,5]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,1],[2025,1]],"2":[[2021,0],[2023,0],[2024,0],[2025,0]],"3":[[2021,6],[2022,3],[2023,3],[2024,4],[2025,3]]},"Second Chance":{"1":[[2023,0],[2024,1]]}}},"Cow/calf":{"Gun":{"Primary":{"1":[[2021,1],[2022,1],[2023,1],[2024,1],[2025,1]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,1],[2025,1]]}}}},"26":{"Bull":{"Gun":{"Primary":{"1":[[2021,14],[2022,17],[2023,11],[2024,11],[2025,11]]},"Second Chance":{"1":[[2021,11],[2022,16],[2023,11],[2024,12],[2025,11]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,3],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2023,3],[2024,4],[2025,5]],"3":[[2023,6]]},"Second Chance":{"1":[[2021,0],[2022,1],[2023,0],[2024,0],[2025,0]]}}},"Cow/calf":{"Gun":{"Primary":{"1":[[2021,5],[2022,6],[2023,6],[2024,7],[2025,6]]},"Second Chance":{"1":[[2021,5],[2022,5],[2023,6],[2024,6],[2025,5]]}}}},"27":{"Bull":{"Bow":{"Primary":{"1":[[2021,7],[2022,10],[2023,10],[2024,10],[2025,13]]},"Second Chance":{"1":[[2021,6],[2022,13],[2023,9],[2024,9]]}},"Gun":{"Primary":{"1":[[2021,14],[2022,12],[2023,12],[2024,13],[2025,13]]},"Second Chance":{"1":[[2021,13],[2022,11],[2023,12],[2024,13],[2025,13]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,1],[2024,2],[2025,2]],"2":[[2021,15],[2022,5]],"3":[[2022,10]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,1],[2024,2],[2025,2]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,0],[2022,0],[2023,4],[2024,3],[2025,5]],"2":[[2021,5]]},"Second Chance":{"1":[[2021,1],[2022,1],[2023,5],[2024,5],[2025,3]]}},"Gun":{"Primary":{"1":[[2021,7],[2022,7],[2023,9],[2024,9],[2025,9]]},"Second Chance":{"1":[[2021,7],[2022,6],[2023,9],[2024,9],[2025,10]]}}}},"28":{"Bull":{"Bow":{"Primary":{"1":[[2021,14],[2022,13],[2023,13],[2024,13],[2025,15]]},"Second Chance":{"1":[[2021,13],[2022,10],[2023,12],[2024,12],[2025,18]]}},"Gun":{"Primary":{"1":[[2021,18],[2022,16],[2023,16],[2024,15],[2025,16]]},"Second Chance":{"1":[[2021,17],[2022,16],[2023,15],[2024,15],[2025,16]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,2],[2022,1],[2023,1],[2024,2],[2025,2]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,1],[2025,2]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,1],[2022,2],[2023,3],[2024,3],[2025,5]]},"Second Chance":{"1":[[2021,1],[2022,2],[2023,2],[2024,3],[2025,6]]}},"Gun":{"Primary":{"1":[[2021,14],[2022,13],[2023,13],[2024,13],[2025,14]]},"Second Chance":{"1":[[2021,15],[2022,13],[2023,13],[2024,13],[2025,15]]}}}},"29":{"Bull":{"Bow":{"Primary":{"1":[[2021,16],[2022,16],[2023,16],[2024,14],[2025,13]]},"Second Chance":{"1":[[2021,14],[2022,15],[2023,15],[2024,12],[2025,13]]}},"Gun":{"Primary":{"1":[[2021,26],[2022,22],[2023,21],[2024,20],[2025,19]]},"Second Chance":{"1":[[2024,19],[2025,18]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,2],[2022,2],[2023,2],[2024,2],[2025,2]]},"Second Chance":{"1":[[2021,2],[2022,1],[2023,2],[2024,2],[2025,2]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,4],[2022,3],[2023,2],[2024,3],[2025,3]]},"Second Chance":{"1":[[2021,2],[2022,1],[2023,2],[2024,2],[2025,3]]}},"Gun":{"Primary":{"1":[[2021,17],[2022,16],[2023,15],[2024,15],[2025,15]]},"Second Chance":{"1":[[2021,25],[2022,15],[2023,16],[2024,15],[2025,16]]}}}},"30":{"Bull":{"Bow":{"Primary":{"1":[[2021,16],[2022,17],[2023,11],[2024,11],[2025,11]]},"Second Chance":{"1":[[2023,8],[2024,12],[2025,10]]}},"Gun":{"Primary":{"1":[[2021,23],[2022,22],[2023,17],[2024,15],[2025,15]]},"Second Chance":{"1":[[2021,22],[2023,14],[2024,14],[2025,14]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,4],[2022,3],[2023,0],[2024,0],[2025,2]],"2":[[2023,5],[2024,5]]},"Second Chance":{"1":[[2021,2],[2022,2],[2023,0],[2024,0],[2025,1]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2022,3],[2023,2],[2024,3],[2025,5]]},"Second Chance":{"1":[[2023,3],[2024,4],[2025,3]]}},"Gun":{"Primary":{"1":[[2021,24],[2022,18],[2023,11],[2024,11],[2025,11]]},"Second Chance":{"1":[[2021,20],[2022,21],[2023,12],[2024,11],[2025,12]]}}}},"31":{"Bull":{"Bow":{"Primary":{"1":[[2021,14],[2022,15],[2023,15],[2024,16],[2025,16]]},"Second Chance":{"1":[[2022,11],[2023,14],[2024,15],[2025,12]]}},"Gun":{"Primary":{"1":[[2021,21],[2022,18],[2023,18],[2024,18],[2025,17]]},"Second Chance":{"1":[[2021,21],[2022,18],[2023,17],[2024,17],[2025,17]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,2],[2023,2],[2024,2],[2025,2]],"2":[[2021,11]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,2],[2025,1]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,2],[2022,3],[2023,3],[2024,3],[2025,3]]},"Second Chance":{"1":[[2021,3],[2022,2],[2023,0],[2024,3],[2025,2]]}},"Gun":{"Primary":{"1":[[2021,13],[2022,12],[2023,13],[2024,14],[2025,14]]},"Second Chance":{"1":[[2021,16],[2022,14],[2023,13],[2024,14],[2025,16]]}}}},"32":{"Bull":{"Bow":{"Primary":{"1":[[2021,14],[2022,13],[2023,11],[2024,12],[2025,12]]},"Second Chance":{"1":[[2021,12],[2022,12],[2023,9]]}},"Gun":{"Primary":{"1":[[2021,15],[2022,14],[2023,13],[2024,13],[2025,13]]},"Second Chance":{"1":[[2021,13],[2022,12],[2023,12],[2024,12],[2025,12]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,0],[2022,0],[2023,0],[2024,2],[2025,2]],"2":[[2021,7],[2022,6],[2023,3]],"3":[[2023,8]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,2],[2025,2]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,2],[2022,0],[2023,1],[2024,0],[2025,0]],"2":[[2023,4],[2024,9]]},"Second Chance":{"1":[[2021,3],[2022,2],[2024,1],[2025,3]]}},"Gun":{"Primary":{"1":[[2021,8],[2022,9],[2023,9],[2024,10],[2025,10]]},"Second Chance":{"1":[[2021,10],[2022,9],[2023,9],[2024,11],[2025,10]]}}}},"33":{"Bull":{"Bow":{"Primary":{"1":[[2021,8],[2022,9],[2023,12],[2024,12],[2025,13]]},"Second Chance":{"1":[[2021,6]]}},"Gun":{"Primary":{"1":[[2021,10],[2022,11],[2023,10],[2024,11],[2025,11]]},"Second Chance":{"1":[[2021,13],[2022,10],[2023,10],[2024,10],[2025,10]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,2],[2022,1],[2023,1],[2024,1],[2025,2]]},"Second Chance":{"1":[[2021,0],[2022,0],[2023,0],[2024,0],[2025,0]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,1],[2024,0],[2025,1]],"2":[[2022,1],[2023,1]],"3":[[2023,5]]},"Second Chance":{"1":[[2021,0],[2024,9],[2025,3]]}},"Gun":{"Primary":{"1":[[2021,7],[2022,8],[2023,7],[2024,8],[2025,8]]},"Second Chance":{"1":[[2021,8],[2022,7],[2023,7],[2024,9],[2025,8]]}}}},"34":{"Bull":{"Gun":{"Primary":{"1":[[2021,15],[2022,13],[2023,13],[2024,13],[2025,13]]},"Second Chance":{"1":[[2021,18],[2022,12],[2023,11]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,1],[2022,0],[2023,0],[2024,0],[2025,2]],"2":[[2022,3],[2023,3]]},"Second Chance":{"1":[[2021,2],[2022,1],[2023,0],[2024,0],[2025,1]]}}},"Cow/calf":{"Gun":{"Primary":{"1":[[2021,8],[2022,9],[2023,8],[2024,6],[2025,7]]},"Second Chance":{"1":[[2021,9],[2022,9],[2023,11],[2024,6],[2025,10]]}}}},"35":{"Bull":{"Bow":{"Primary":{"1":[[2021,16],[2022,12],[2023,11],[2024,11],[2025,11]]},"Second Chance":{"1":[[2022,9],[2023,10],[2024,10]]}},"Gun":{"Primary":{"1":[[2021,25],[2022,18],[2023,16],[2024,15],[2025,14]]},"Second Chance":{"1":[[2021,23],[2022,15],[2023,13],[2024,13],[2025,12]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,4],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2022,7],[2023,5],[2024,6],[2025,7]],"3":[[2023,12]]},"Second Chance":{"1":[[2021,3],[2022,0],[2023,0],[2024,0],[2025,0]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,5],[2022,2],[2023,2],[2024,2],[2025,3]]},"Second Chance":{"1":[[2021,12],[2022,2],[2023,1],[2024,2],[2025,2]]}},"Gun":{"Primary":{"1":[[2021,18],[2022,11],[2023,10],[2024,8],[2025,9]]},"Second Chance":{"1":[[2021,20],[2022,10],[2023,9],[2024,6],[2025,7]]}}}},"36":{"Bull":{"Bow":{"Primary":{"1":[[2021,26],[2023,8],[2024,11],[2025,11]]},"Second Chance":{"1":[[2022,13],[2023,8],[2024,9],[2025,10]]}},"Gun":{"Primary":{"1":[[2021,26],[2022,28],[2023,22],[2024,20],[2025,17]]},"Second Chance":{"1":[[2022,26],[2023,19],[2024,22],[2025,15]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,9],[2022,9],[2023,2],[2024,2],[2025,2]]},"Second Chance":{"1":[[2021,11],[2022,7],[2023,0],[2024,2],[2025,2]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2022,17],[2023,2],[2024,3],[2025,5]]},"Second Chance":{"1":[[2022,4],[2023,2]]}},"Gun":{"Primary":{"1":[[2021,27],[2022,23],[2023,12],[2024,12],[2025,10]]},"Second Chance":{"1":[[2021,28],[2022,23],[2023,11],[2024,11],[2025,8]]}}}},"37":{"Bull":{"Bow":{"Primary":{"1":[[2021,12],[2022,14],[2023,13],[2024,12],[2025,13]]},"Second Chance":{"1":[[2023,11]]}},"Gun":{"Primary":{"1":[[2021,24],[2022,21],[2023,19],[2024,18],[2025,17]]},"Second Chance":{"1":[[2022,22],[2023,16],[2024,17],[2025,16]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,8],[2022,4],[2023,3],[2024,4],[2025,4]]},"Second Chance":{"1":[[2021,6],[2022,2],[2023,3],[2024,4],[2025,3]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2022,2],[2023,6],[2024,6],[2025,3]]},"Second Chance":{"1":[[2022,1],[2024,2]]}},"Gun":{"Primary":{"1":[[2021,21],[2022,18],[2023,17],[2024,15],[2025,16]]},"Second Chance":{"1":[[2021,20],[2022,16],[2023,15],[2024,13],[2025,15]]}}}},"38":{"Bull":{"Bow":{"Primary":{"1":[[2021,17],[2022,13],[2023,12],[2024,13],[2025,13]]},"Second Chance":{"1":[[2021,16],[2022,11],[2023,10],[2024,12],[2025,11]]}},"Gun":{"Primary":{"1":[[2021,23],[2022,18],[2023,16],[2024,16],[2025,16]]},"Second Chance":{"1":[[2021,26],[2022,17],[2023,15],[2024,15],[2025,15]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,3],[2022,0],[2023,0],[2024,0],[2025,0]],"2":[[2022,11],[2023,4],[2024,5],[2025,6]],"3":[[2023,13]]},"Second Chance":{"1":[[2021,3],[2022,0],[2023,0],[2024,0],[2025,0]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,11],[2022,2],[2023,4],[2024,3],[2025,4]]},"Second Chance":{"1":[[2022,6],[2023,0],[2024,2],[2025,3]]}},"Gun":{"Primary":{"1":[[2021,19],[2022,14],[2023,14],[2024,13],[2025,12]]},"Second Chance":{"1":[[2021,17],[2022,14],[2023,13],[2024,13],[2025,12]]}}}},"39":{"Bull":{"Bow":{"Primary":{"1":[[2021,17],[2022,16],[2023,15],[2024,15],[2025,14]]},"Second Chance":{"1":[[2021,17],[2022,14],[2023,12],[2024,14],[2025,13]]}},"Gun":{"Primary":{"1":[[2021,26],[2022,22],[2023,21],[2024,21],[2025,20]]},"Second Chance":{"1":[[2022,21],[2023,21],[2024,20],[2025,19]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,5],[2022,2],[2023,2],[2024,2],[2025,1]]},"Second Chance":{"1":[[2021,3],[2022,0],[2023,0],[2024,2],[2025,0]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,5],[2022,2],[2023,4],[2024,4],[2025,2]]},"Second Chance":{"1":[[2021,9],[2022,0],[2023,8],[2024,11],[2025,1]]}},"Gun":{"Primary":{"1":[[2021,21],[2022,15],[2023,15],[2024,15],[2025,14]]},"Second Chance":{"1":[[2021,24],[2022,15],[2023,15],[2024,14],[2025,14]]}}}},"40":{"Bull":{"Bow":{"Primary":{"1":[[2021,19],[2022,20],[2023,15],[2024,15],[2025,15]]},"Second Chance":{"1":[[2021,19],[2022,18],[2024,14],[2025,14]]}},"Gun":{"Primary":{"1":[[2021,25],[2022,23],[2023,22],[2024,21],[2025,21]]},"Second Chance":{"1":[[2023,21],[2024,20],[2025,20]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,8],[2022,7],[2023,3],[2024,3],[2025,3]]},"Second Chance":{"1":[[2021,9],[2022,4],[2023,1],[2024,2],[2025,2]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,5],[2022,6],[2023,2],[2024,5],[2025,4]]},"Second Chance":{"1":[[2022,11],[2023,3],[2024,8],[2025,6]]}},"Gun":{"Primary":{"1":[[2021,19],[2022,19],[2023,15],[2024,15],[2025,15]]},"Second Chance":{"1":[[2021,24],[2022,19],[2023,15],[2024,17],[2025,15]]}}}},"41":{"Bull":{"Bow":{"Primary":{"1":[[2021,23],[2022,21],[2023,19],[2024,19],[2025,19]]},"Second Chance":{"1":[[2022,20],[2023,18],[2024,18],[2025,18]]}},"Gun":{"Primary":{"1":[[2021,28],[2022,25],[2023,24],[2024,23],[2025,23]]},"Second Chance":{"1":[[2022,24],[2023,23],[2024,23],[2025,23]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,12],[2022,8],[2023,4],[2024,4],[2025,3]]},"Second Chance":{"1":[[2021,14],[2022,3],[2023,3],[2024,4],[2025,3]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,12],[2022,7],[2023,7],[2024,10],[2025,8]]},"Second Chance":{"1":[[2021,15],[2022,4],[2023,7],[2024,7],[2025,7]]}},"Gun":{"Primary":{"1":[[2021,24],[2022,22],[2023,21],[2024,21],[2025,17]]},"Second Chance":{"1":[[2021,26],[2022,22],[2023,22],[2024,26],[2025,20]]}}}},"42":{"Bull":{"Bow":{"Primary":{"1":[[2021,22],[2022,17],[2023,15],[2024,19],[2025,16]]},"Second Chance":{"1":[[2021,19],[2022,23],[2023,14],[2025,15]]}},"Gun":{"Primary":{"1":[[2021,28],[2022,27],[2023,25],[2024,25],[2025,24]]},"Second Chance":{"1":[[2021,27],[2023,26],[2024,24],[2025,23]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,13],[2022,13],[2023,8],[2024,6],[2025,6]]},"Second Chance":{"1":[[2021,13],[2022,9],[2023,5],[2024,6],[2025,5]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,7],[2022,12],[2023,8],[2024,9],[2025,9]]},"Second Chance":{"1":[[2022,8],[2023,10],[2024,8],[2025,8]]}},"Gun":{"Primary":{"1":[[2021,25],[2022,24],[2023,21],[2024,20],[2025,19]]},"Second Chance":{"1":[[2021,26],[2022,25],[2023,19],[2024,21],[2025,18]]}}}},"46":{"Bull":{"Bow":{"Primary":{"1":[[2021,9],[2022,9],[2023,11],[2024,8],[2025,9]]},"Second Chance":{"1":[[2021,8],[2022,1],[2023,7],[2024,7],[2025,8]]}},"Gun":{"Primary":{"1":[[2021,14],[2022,12],[2023,12],[2024,11],[2025,12]]},"Second Chance":{"1":[[2021,12],[2022,11],[2023,11],[2024,11],[2025,11]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,5],[2022,4],[2023,3],[2024,2],[2025,2]]},"Second Chance":{"1":[[2021,4],[2022,0],[2023,1],[2024,1],[2025,1]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,6],[2022,4],[2023,2],[2024,2],[2025,2]]},"Second Chance":{"1":[[2021,5],[2022,0],[2023,4],[2024,6],[2025,1]]}},"Gun":{"Primary":{"1":[[2021,12],[2022,9],[2023,9],[2024,8],[2025,9]]},"Second Chance":{"1":[[2021,11],[2022,8],[2023,8],[2024,9],[2025,8]]}}}},"47":{"Bull":{"Bow":{"Primary":{"1":[[2021,16],[2022,16],[2023,17],[2024,17],[2025,15]]},"Second Chance":{"1":[[2021,13],[2022,18],[2023,16],[2024,16],[2025,17]]}},"Gun":{"Primary":{"1":[[2021,22],[2022,21],[2023,21],[2024,21],[2025,21]]},"Second Chance":{"1":[[2021,21],[2022,21],[2023,21],[2024,21],[2025,23]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,11],[2022,9],[2023,8],[2024,7],[2025,5]]},"Second Chance":{"1":[[2021,10],[2022,7],[2023,5],[2024,5],[2025,4]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,6],[2022,9],[2023,6],[2024,9],[2025,9]]},"Second Chance":{"1":[[2021,4],[2022,8],[2023,6],[2024,9],[2025,7]]}},"Gun":{"Primary":{"1":[[2021,20],[2022,19],[2023,18],[2024,19],[2025,19]]},"Second Chance":{"1":[[2021,19],[2022,20],[2023,19],[2024,19],[2025,19]]}}}},"48":{"Bull":{"Bow":{"Primary":{"1":[[2021,18],[2022,18],[2023,17],[2024,16],[2025,17]]},"Second Chance":{"1":[[2021,18],[2022,16],[2023,20],[2024,16],[2025,15]]}},"Gun":{"Primary":{"1":[[2021,28],[2022,25],[2023,25],[2024,26],[2025,25]]},"Second Chance":{"1":[[2021,26],[2022,26],[2023,25],[2024,25],[2025,24]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,13],[2022,11],[2023,8],[2024,7],[2025,4]]},"Second Chance":{"1":[[2021,9],[2022,8],[2023,7],[2024,7],[2025,1]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,9],[2022,10],[2023,9],[2024,10],[2025,9]]},"Second Chance":{"1":[[2021,10],[2022,9],[2023,8],[2024,10],[2025,9]]}},"Gun":{"Primary":{"1":[[2021,24],[2022,24],[2023,24],[2024,23],[2025,22]]},"Second Chance":{"1":[[2021,27],[2022,28],[2023,23],[2024,22],[2025,23]]}}}},"49":{"Bull":{"Bow":{"Primary":{"1":[[2021,15],[2022,13],[2023,14],[2024,16],[2025,14]]},"Second Chance":{"1":[[2021,18],[2022,12],[2023,12],[2024,14],[2025,14]]}},"Gun":{"Primary":{"1":[[2021,23],[2022,21],[2023,21],[2024,20],[2025,20]]},"Second Chance":{"1":[[2021,21],[2022,20],[2023,20],[2024,19],[2025,19]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,10],[2022,9],[2023,7],[2024,5],[2025,6]]},"Second Chance":{"1":[[2021,9],[2022,6],[2023,5],[2024,4],[2025,4]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,3],[2022,6],[2023,8],[2024,7],[2025,8]]},"Second Chance":{"1":[[2021,11],[2022,8],[2023,7],[2024,8],[2025,6]]}},"Gun":{"Primary":{"1":[[2021,20],[2022,18],[2023,17],[2024,17],[2025,18]]},"Second Chance":{"1":[[2021,19],[2022,17],[2023,17],[2024,17],[2025,17]]}}}},"50":{"Bull":{"Bow":{"Primary":{"1":[[2021,13],[2022,15],[2023,14],[2024,16],[2025,15]]},"Second Chance":{"1":[[2024,16]]}},"Gun":{"Primary":{"1":[[2021,20],[2022,20],[2023,20],[2024,20],[2025,20]]},"Second Chance":{"1":[[2023,20],[2025,19]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,12],[2022,12],[2023,12],[2024,11],[2025,7]]},"Second Chance":{"1":[[2021,13],[2022,16],[2023,12],[2024,13],[2025,2]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,8],[2023,10],[2024,13],[2025,10]]},"Second Chance":{"1":[[2021,13],[2023,10],[2024,10],[2025,11]]}},"Gun":{"Primary":{"1":[[2021,17],[2022,17],[2023,18],[2024,18],[2025,18]]},"Second Chance":{"1":[[2021,19],[2024,19],[2025,17]]}}}},"53":{"Bull":{"Bow":{"Primary":{"1":[[2021,11],[2022,11],[2023,13],[2024,10],[2025,10]]},"Second Chance":{"1":[[2021,7],[2024,10]]}},"Gun":{"Primary":{"1":[[2021,16],[2022,14],[2023,14],[2024,14],[2025,17]]},"Second Chance":{"1":[[2021,15],[2022,15],[2023,13],[2024,14],[2025,16]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,7],[2022,7],[2023,6],[2024,6],[2025,10]]},"Second Chance":{"1":[[2021,6],[2022,5],[2023,7],[2024,5]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,3],[2022,4],[2023,6],[2024,6],[2025,7]]},"Second Chance":{"1":[[2021,3],[2022,4],[2024,7]]}},"Gun":{"Primary":{"1":[[2021,13],[2022,13],[2023,13],[2024,13],[2025,13]]},"Second Chance":{"1":[[2021,13],[2022,12],[2023,13],[2024,12]]}}}},"54":{"Bull":{"Bow":{"Primary":{"1":[[2021,9],[2022,11],[2023,10],[2024,12],[2025,17]]},"Second Chance":{"1":[[2021,11],[2022,10]]}},"Gun":{"Primary":{"1":[[2021,14],[2022,14],[2023,14],[2024,14],[2025,16]]},"Second Chance":{"1":[[2021,14],[2022,14],[2023,14],[2024,14],[2025,15]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,7],[2022,7],[2023,7],[2024,7],[2025,9]]},"Second Chance":{"1":[[2021,6],[2022,7],[2023,6],[2024,5],[2025,8]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,2],[2022,5],[2023,7],[2024,9],[2025,10]]},"Second Chance":{"1":[[2021,2],[2022,3],[2023,6],[2024,9]]}},"Gun":{"Primary":{"1":[[2021,13],[2022,12],[2023,12],[2024,13],[2025,14]]},"Second Chance":{"1":[[2021,13],[2022,12],[2023,13],[2024,15],[2025,14]]}}}},"55A":{"Bull":{"Bow":{"Primary":{"1":[[2021,13],[2022,16],[2023,21],[2024,13],[2025,16]]},"Second Chance":{"1":[[2023,16]]}},"Gun":{"Primary":{"1":[[2021,22],[2022,21],[2023,20],[2024,19],[2025,18]]},"Second Chance":{"1":[[2023,18]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,11],[2022,9],[2023,10],[2024,11],[2025,7]]},"Second Chance":{"1":[[2021,18],[2022,15],[2023,7],[2024,12],[2025,6]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,6],[2022,6],[2023,9],[2024,9],[2025,10]]},"Second Chance":{"1":[[2021,8],[2023,6],[2024,11],[2025,11]]}},"Gun":{"Primary":{"1":[[2021,18],[2022,17],[2023,17],[2024,17],[2025,14]]},"Second Chance":{"1":[[2023,16]]}}}},"55B":{"Bull":{"Bow":{"Primary":{"1":[[2021,14],[2022,13],[2023,12],[2024,13],[2025,13]]},"Second Chance":{"1":[[2021,19],[2022,12]]}},"Gun":{"Primary":{"1":[[2021,24],[2022,17],[2023,18],[2024,19],[2025,15]]},"Second Chance":{"1":[[2022,19],[2023,16]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,9],[2022,8],[2023,8],[2024,7],[2025,3]]},"Second Chance":{"1":[[2021,12],[2022,6],[2023,8],[2024,6],[2025,2]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,8],[2022,11],[2023,9],[2024,9],[2025,7]]},"Second Chance":{"1":[[2021,8],[2022,9],[2023,8],[2024,8],[2025,2]]}},"Gun":{"Primary":{"1":[[2021,20],[2022,16],[2023,15],[2024,15],[2025,13]]},"Second Chance":{"1":[[2023,13],[2024,14]]}}}},"56":{"Bull":{"Bow":{"Primary":{"1":[[2021,13],[2022,11],[2023,10],[2024,11],[2025,14]]},"Second Chance":{"1":[[2023,14],[2024,13]]}},"Gun":{"Primary":{"1":[[2021,19],[2022,17],[2023,16],[2024,16],[2025,18]]},"Second Chance":{"1":[[2021,18],[2022,16],[2023,15],[2024,15]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,8],[2022,6],[2023,6],[2024,4],[2025,10]]},"Second Chance":{"1":[[2021,6],[2022,4],[2023,4],[2024,3],[2025,9]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,2],[2022,4],[2023,5],[2024,4],[2025,6]]},"Second Chance":{"1":[[2021,2],[2022,5],[2023,4],[2024,4],[2025,7]]}},"Gun":{"Primary":{"1":[[2021,16],[2022,15],[2023,14],[2024,14],[2025,15]]},"Second Chance":{"1":[[2021,15],[2022,14],[2023,14],[2024,14],[2025,15]]}}}},"57":{"Bull":{"Bow":{"Primary":{"1":[[2021,13],[2022,13],[2023,13],[2024,14],[2025,14]]},"Second Chance":{"1":[[2021,12],[2022,13],[2023,13],[2025,14]]}},"Gun":{"Primary":{"1":[[2021,20],[2022,20],[2023,19],[2024,19],[2025,19]]},"Second Chance":{"1":[[2021,22],[2022,21],[2023,19],[2025,19]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,7],[2022,7],[2023,6],[2024,6],[2025,6]]},"Second Chance":{"1":[[2021,7],[2022,7],[2023,5],[2024,6],[2025,7]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,7],[2022,7],[2023,8],[2024,8],[2025,8]]},"Second Chance":{"1":[[2021,5],[2022,8],[2023,7],[2024,11],[2025,9]]}},"Gun":{"Primary":{"1":[[2021,20],[2022,18],[2023,17],[2024,16],[2025,17]]},"Second Chance":{"1":[[2022,18],[2023,17],[2024,17]]}}}},"58":{"Bull":{"Bow":{"Primary":{"1":[[2023,12],[2024,11],[2025,13]]},"Second Chance":{"1":[[2023,13],[2024,13],[2025,14]]}},"Gun":{"Primary":{"1":[[2023,14],[2024,16],[2025,16]]},"Second Chance":{"1":[[2023,15]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,7],[2022,5],[2023,6],[2024,6],[2025,7]]},"Second Chance":{"1":[[2021,7],[2022,3],[2023,3],[2024,7],[2025,6]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2023,3],[2024,4],[2025,6]]},"Second Chance":{"1":[[2023,6],[2025,6]]}},"Gun":{"Primary":{"1":[[2023,13],[2024,18],[2025,12]]}}}},"59":{"Calf":{"All Seasons":{"Primary":{"1":[[2021,6],[2022,2],[2023,6],[2024,4],[2025,5]]},"Second Chance":{"1":[[2022,2],[2023,2],[2024,3]]}}}},"60":{"Bull":{"Bow":{"Primary":{"1":[[2021,14],[2022,12],[2023,12],[2024,11],[2025,12]]},"Second Chance":{"1":[[2022,9],[2023,10],[2024,11],[2025,11]]}},"Gun":{"Primary":{"1":[[2021,22],[2022,19],[2023,17],[2024,17],[2025,17]]},"Second Chance":{"1":[[2021,21],[2022,18],[2023,17],[2024,16],[2025,16]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,9],[2022,7],[2023,5],[2024,3],[2025,3]]},"Second Chance":{"1":[[2021,8],[2022,4],[2023,2],[2024,3],[2025,3]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,5],[2022,8],[2023,5],[2024,7],[2025,6]]},"Second Chance":{"1":[[2021,7],[2022,4],[2023,11],[2024,10],[2025,4]]}},"Gun":{"Primary":{"1":[[2021,20],[2022,16],[2023,15],[2024,15],[2025,14]]},"Second Chance":{"1":[[2021,20],[2022,16],[2023,15],[2024,14],[2025,15]]}}}},"61":{"Bull":{"Bow":{"Primary":{"1":[[2021,13],[2022,13],[2023,14],[2025,14]]},"Second Chance":{"1":[[2022,12],[2024,13],[2025,14]]}},"Gun":{"Primary":{"1":[[2021,17],[2022,17],[2023,17],[2024,17],[2025,17]]},"Second Chance":{"1":[[2021,16],[2022,16],[2023,18],[2024,17],[2025,17]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,9],[2022,9],[2023,8],[2024,7],[2025,6]]},"Second Chance":{"1":[[2021,9],[2022,8],[2023,6],[2024,6],[2025,5]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,12],[2022,7],[2023,8],[2024,5],[2025,6]]},"Second Chance":{"1":[[2021,7],[2022,3],[2025,11]]}},"Gun":{"Primary":{"1":[[2021,15],[2022,15],[2023,15],[2024,16],[2025,16]]},"Second Chance":{"1":[[2021,15],[2022,14],[2023,16],[2025,16]]}}}},"62":{"Bull":{"Bow":{"Primary":{"1":[[2021,15],[2022,10],[2023,11],[2024,10],[2025,11]]},"Second Chance":{"1":[[2024,8],[2025,9]]}},"Gun":{"Primary":{"1":[[2021,23],[2022,19],[2023,17],[2024,16],[2025,17]]},"Second Chance":{"1":[[2023,16],[2025,16]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,15],[2022,8],[2023,5],[2024,3],[2025,5]]},"Second Chance":{"1":[[2021,18],[2022,6],[2023,3],[2024,2],[2025,4]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2022,5],[2023,6],[2024,4],[2025,4]]},"Second Chance":{"1":[[2022,7],[2023,0]]}},"Gun":{"Primary":{"1":[[2021,23],[2022,16],[2023,16],[2024,15],[2025,15]]},"Second Chance":{"1":[[2023,15],[2025,14]]}}}},"63":{"Bull":{"Bow":{"Primary":{"1":[[2021,10],[2022,13],[2023,13],[2024,14],[2025,13]]},"Second Chance":{"1":[[2021,11],[2022,12],[2023,11],[2024,14],[2025,17]]}},"Gun":{"Primary":{"1":[[2021,19],[2022,17],[2023,16],[2024,16],[2025,16]]},"Second Chance":{"1":[[2021,19],[2022,16],[2023,16],[2024,15],[2025,15]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,10],[2022,6],[2023,6],[2024,5],[2025,4]]},"Second Chance":{"1":[[2021,10],[2022,5],[2023,5],[2024,3],[2025,2]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,3],[2022,7],[2023,6],[2024,8],[2025,7]]},"Second Chance":{"1":[[2024,11],[2025,9]]}},"Gun":{"Primary":{"1":[[2021,19],[2022,15],[2023,15],[2024,15],[2025,14]]},"Second Chance":{"1":[[2022,16],[2023,14],[2025,13]]}}}},"65":{"Bull":{"Bow":{"Primary":{"1":[[2021,8],[2022,6],[2023,6],[2024,6],[2025,6]]},"Second Chance":{"1":[[2021,7],[2022,5],[2023,5],[2024,7],[2025,6]]}}},"Calf":{"All Seasons":{"Primary":{"1":[[2021,1],[2022,0],[2023,1],[2024,1],[2025,1]]},"Second Chance":{"1":[[2021,1],[2022,0],[2023,1],[2024,2],[2025,0]]}}},"Cow/calf":{"Bow":{"Primary":{"1":[[2021,3],[2022,3],[2023,2],[2024,2],[2025,2]]},"Second Chance":{"1":[[2021,2],[2022,2],[2023,2],[2024,2],[2025,2]]}}}}};
+
+  function sortedKeys(obj) {
+    return Object.keys(obj).sort((a, b) => {
+      const na = Number(a), nb = Number(b);
+      if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+      return a.localeCompare(b);
+    });
+  }
+
+  function availableWMUs() {
+    return sortedKeys(MOOSE_TRENDS);
+  }
+
+  function availableMooseTypes(wmu) {
+    return MOOSE_TRENDS[wmu] ? sortedKeys(MOOSE_TRENDS[wmu]) : [];
+  }
+
+  function availableSeasons(wmu, mooseType) {
+    return MOOSE_TRENDS[wmu] && MOOSE_TRENDS[wmu][mooseType] ? sortedKeys(MOOSE_TRENDS[wmu][mooseType]) : [];
+  }
+
+  function availableStages(wmu, mooseType, season) {
+    const node = MOOSE_TRENDS[wmu] && MOOSE_TRENDS[wmu][mooseType] && MOOSE_TRENDS[wmu][mooseType][season];
+    return node ? sortedKeys(node) : [];
+  }
+
+  function availableChoices(wmu, mooseType, season, stage) {
+    const seasonNode = MOOSE_TRENDS[wmu] && MOOSE_TRENDS[wmu][mooseType] && MOOSE_TRENDS[wmu][mooseType][season];
+    const node = seasonNode && seasonNode[stage];
+    return node ? sortedKeys(node) : [];
+  }
+
+  function getTrendSeries(target) {
+    if (!target) return null;
+    const node =
+      MOOSE_TRENDS[target.wmu] &&
+      MOOSE_TRENDS[target.wmu][target.mooseType] &&
+      MOOSE_TRENDS[target.wmu][target.mooseType][target.season] &&
+      MOOSE_TRENDS[target.wmu][target.mooseType][target.season][target.stage] &&
+      MOOSE_TRENDS[target.wmu][target.mooseType][target.season][target.stage][target.choice];
+    if (!node) return null;
+    return node.map(([year, cutoff]) => ({ year, cutoff }));
+  }
+
+  const DEFAULT_GROUP_TARGET = { wmu: "24", mooseType: "Bull", season: "Gun", stage: "Primary", choice: "1" };
 
   // ---------------------------------------------------------------------
   // Forecast engine - replaces a flat, hand-set MPR guess with a cutoff
-  // trend fitted to WMU24_TRENDS and a probability ramp instead of a hard
-  // pass/fail threshold, since the real data shows partial award rates
-  // right around the cutoff rather than a clean cliff.
+  // trend fitted to the group's chosen target's real MOOSE_TRENDS series
+  // and a probability ramp instead of a hard pass/fail threshold, since
+  // the real data shows partial award rates right around the cutoff
+  // rather than a clean cliff.
   // ---------------------------------------------------------------------
   function linearRegression(points) {
     const n = points.length;
@@ -405,7 +511,7 @@
     return projectedPoints(hunter, year, startYear) + bonus;
   }
 
-  function buildBullForecast(hunter, startYear, endYear, trend) {
+  function buildHunterForecast(hunter, startYear, endYear, trend) {
     const results = [];
     for (let year = startYear; year <= endYear; year++) {
       const cutoff = projectCutoff(trend, year);
@@ -480,6 +586,78 @@
     return roster;
   }
 
+  // rosterToRows - the inverse of parseRosterRows, so edits made in-browser
+  // can be exported back out as the same flat template shape for re-upload
+  // or hand-off to another tool.
+  function rosterToRows(roster) {
+    const rows = [];
+    (roster || []).forEach((hunter) => {
+      hunter.pointsHistory.forEach((entry) => {
+        rows.push({
+          Hunter: hunter.name,
+          Year: entry.year,
+          Points: entry.points,
+          TagType: entry.tagType || "",
+          Claimed: entry.claimed ? "Y" : "N",
+          WMU: entry.wmu || "",
+          Season: entry.season || "",
+          MooseType: entry.mooseType || "",
+          NorthernResident: entry.northernResident ? "Y" : "N"
+        });
+      });
+    });
+    return rows;
+  }
+
+  // buildPointsSeries - one {year, points} series per hunter, real history
+  // up to the current year plus the same forward projection the forecast
+  // engine uses (banked points +1/year), for the points-over-time chart.
+  function buildPointsSeries(roster, startYear, endYear) {
+    return (roster || []).map((hunter) => {
+      const history = (hunter.pointsHistory || []).slice().sort((a, b) => a.year - b.year);
+      const points = [];
+      history.forEach((entry) => {
+        if (entry.year <= startYear) points.push({ year: entry.year, points: entry.points });
+      });
+      for (let year = startYear; year <= endYear; year++) {
+        points.push({ year, points: projectedPoints(hunter, year, startYear) });
+      }
+      return { name: hunter.name, points };
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Persistence - localStorage only, per browser, no accounts/server. A
+  // roster the user uploaded (and any in-browser edits since) survives
+  // reloads; the demo HUNTER_SEED data is never persisted.
+  // ---------------------------------------------------------------------
+  const STORAGE_KEY = "mooseTrackerState_v1";
+
+  function loadPersistedState() {
+    try {
+      if (typeof localStorage === "undefined") return null;
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function persistState() {
+    try {
+      if (typeof localStorage === "undefined") return;
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          roster: activeRosterIsUploaded ? activeRoster : null,
+          target: groupTarget
+        })
+      );
+    } catch (e) {
+      // ignore quota / private-browsing errors - the app still works, just unsaved
+    }
+  }
+
   // ---------------------------------------------------------------------
   // Rendering
   // ---------------------------------------------------------------------
@@ -507,22 +685,171 @@
 
   let activeRoster = HUNTER_SEED;
   let activeRosterIsUploaded = false;
+  let groupTarget = Object.assign({}, DEFAULT_GROUP_TARGET);
+
+  (function restorePersistedState() {
+    const saved = loadPersistedState();
+    if (!saved) return;
+    if (saved.roster && Array.isArray(saved.roster) && saved.roster.length > 0) {
+      activeRoster = saved.roster;
+      activeRosterIsUploaded = true;
+    }
+    if (saved.target && getTrendSeries(saved.target)) {
+      groupTarget = saved.target;
+    }
+  })();
+
+  function setGroupTarget(next) {
+    groupTarget = Object.assign({}, groupTarget, next);
+    persistState();
+    render();
+  }
+
+  function findHunter(name) {
+    return activeRoster.find((h) => h.name === name);
+  }
+
+  function markEditedAndPersist() {
+    activeRosterIsUploaded = true;
+    persistState();
+    render();
+  }
+
+  function updateEntryField(hunterName, idx, field, value) {
+    const hunter = findHunter(hunterName);
+    const entry = hunter && hunter.pointsHistory[idx];
+    if (!entry) return;
+    if (field === "year" || field === "points") {
+      const n = Number(value);
+      if (Number.isFinite(n)) entry[field] = n;
+    } else if (field === "claimed" || field === "northernResident") {
+      entry[field] = !!value;
+    } else if (field === "tagType") {
+      entry.tagType = value ? value : null;
+    }
+    hunter.pointsHistory.sort((a, b) => a.year - b.year);
+    markEditedAndPersist();
+  }
+
+  function addYearForHunter(hunterName) {
+    const hunter = findHunter(hunterName);
+    if (!hunter) return;
+    const lastYear = hunter.pointsHistory.length
+      ? hunter.pointsHistory[hunter.pointsHistory.length - 1].year
+      : new Date().getFullYear();
+    hunter.pointsHistory.push({
+      year: lastYear + 1,
+      points: 0,
+      tagType: null,
+      claimed: false,
+      northernResident: false,
+      wmu: null,
+      season: null,
+      mooseType: null
+    });
+    markEditedAndPersist();
+  }
+
+  function deleteEntry(hunterName, idx) {
+    const hunter = findHunter(hunterName);
+    if (!hunter) return;
+    hunter.pointsHistory.splice(idx, 1);
+    markEditedAndPersist();
+  }
+
+  function addHunterNamed(name) {
+    const trimmed = (name || "").trim();
+    if (!trimmed) return;
+    activeRoster = activeRoster.concat([
+      {
+        name: trimmed,
+        pointsHistory: [
+          {
+            year: new Date().getFullYear(),
+            points: 0,
+            tagType: null,
+            claimed: false,
+            northernResident: false,
+            wmu: null,
+            season: null,
+            mooseType: null
+          }
+        ]
+      }
+    ]);
+    markEditedAndPersist();
+  }
+
+  function addHunter() {
+    if (typeof prompt !== "function") return;
+    addHunterNamed(prompt(t("addHunterPrompt")));
+  }
+
+  function makeEditInput(type, value, hunterName, idx, field) {
+    const input = document.createElement("input");
+    input.type = type;
+    if (type === "checkbox") input.checked = !!value;
+    else input.value = value == null ? "" : value;
+    input.dataset.action = "edit-entry";
+    input.dataset.name = hunterName;
+    input.dataset.idx = String(idx);
+    input.dataset.field = field;
+    return input;
+  }
 
   function renderRoster() {
     const body = document.getElementById("rosterBody");
     if (!body) return;
+    const hint = document.getElementById("rosterEditHint");
+    if (hint) hint.textContent = t("rosterEditHint");
+    const addBtn = document.getElementById("addHunterBtn");
+    if (addBtn) addBtn.textContent = t("addHunterBtn");
+    const head = document.getElementById("rosterTableHead");
+    if (head) {
+      const cols = t("table");
+      head.innerHTML = `<th>${cols.name}</th><th>${cols.year}</th><th>${cols.points}</th><th>${cols.tag}</th><th>${cols.claimed}</th><th>${cols.northern}</th><th></th>`;
+    }
+
     body.innerHTML = "";
     activeRoster.forEach((hunter) => {
-      hunter.pointsHistory.forEach((entry) => {
+      hunter.pointsHistory.forEach((entry, idx) => {
         const tr = document.createElement("tr");
-        tr.innerHTML =
-          "<td>" + hunter.name + "</td>" +
-          "<td>" + entry.year + "</td>" +
-          "<td>" + entry.points + "</td>" +
-          "<td>" + (entry.tagType || "—") + "</td>" +
-          "<td>" + (entry.claimed ? t("table.yes") : t("table.no")) + "</td>";
+        const nameCell = document.createElement("td");
+        nameCell.textContent = hunter.name;
+        const yearCell = document.createElement("td");
+        yearCell.textContent = entry.year;
+        const pointsCell = document.createElement("td");
+        pointsCell.appendChild(makeEditInput("number", entry.points, hunter.name, idx, "points"));
+        const tagCell = document.createElement("td");
+        tagCell.appendChild(makeEditInput("text", entry.tagType || "", hunter.name, idx, "tagType"));
+        const claimedCell = document.createElement("td");
+        claimedCell.appendChild(makeEditInput("checkbox", entry.claimed, hunter.name, idx, "claimed"));
+        const northernCell = document.createElement("td");
+        northernCell.appendChild(makeEditInput("checkbox", entry.northernResident, hunter.name, idx, "northernResident"));
+        const actionsCell = document.createElement("td");
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.textContent = "×";
+        delBtn.dataset.action = "delete-entry";
+        delBtn.dataset.name = hunter.name;
+        delBtn.dataset.idx = String(idx);
+        actionsCell.appendChild(delBtn);
+
+        tr.append(nameCell, yearCell, pointsCell, tagCell, claimedCell, northernCell, actionsCell);
         body.appendChild(tr);
       });
+
+      const addRow = document.createElement("tr");
+      const addCell = document.createElement("td");
+      addCell.colSpan = 7;
+      const addYearBtn = document.createElement("button");
+      addYearBtn.type = "button";
+      addYearBtn.textContent = t("addYearBtn");
+      addYearBtn.dataset.action = "add-year";
+      addYearBtn.dataset.name = hunter.name;
+      addCell.appendChild(addYearBtn);
+      addRow.appendChild(addCell);
+      body.appendChild(addRow);
     });
   }
 
@@ -549,6 +876,80 @@
 
   const FORECAST_SPAN_YEARS = 7; // years shown beyond the current year
 
+  function renderTargetSelector() {
+    const wmuSel = document.getElementById("targetWmu");
+    if (!wmuSel) return;
+    const heading = document.getElementById("targetHeading");
+    if (heading) heading.textContent = t("targetHeading");
+    const desc = document.getElementById("targetDesc");
+    if (desc) desc.textContent = t("targetDesc");
+    const setLabel = (id, key) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = t(key);
+    };
+    setLabel("targetWmuLabel", "targetWmuLabel");
+    setLabel("targetTypeLabel", "targetTypeLabel");
+    setLabel("targetSeasonLabel", "targetSeasonLabel");
+    setLabel("targetStageLabel", "targetStageLabel");
+    setLabel("targetChoiceLabel", "targetChoiceLabel");
+
+    function fillSelect(select, options, current) {
+      select.innerHTML = "";
+      options.forEach((opt) => {
+        const o = document.createElement("option");
+        o.value = opt;
+        o.textContent = opt;
+        select.appendChild(o);
+      });
+      if (options.includes(current)) select.value = current;
+    }
+
+    const wmus = availableWMUs();
+    fillSelect(wmuSel, wmus, groupTarget.wmu);
+    const typeSel = document.getElementById("targetMooseType");
+    fillSelect(typeSel, availableMooseTypes(groupTarget.wmu), groupTarget.mooseType);
+    const seasonSel = document.getElementById("targetSeason");
+    fillSelect(seasonSel, availableSeasons(groupTarget.wmu, groupTarget.mooseType), groupTarget.season);
+    const stageSel = document.getElementById("targetStage");
+    fillSelect(stageSel, availableStages(groupTarget.wmu, groupTarget.mooseType, groupTarget.season), groupTarget.stage);
+    const choiceSel = document.getElementById("targetChoice");
+    fillSelect(
+      choiceSel,
+      availableChoices(groupTarget.wmu, groupTarget.mooseType, groupTarget.season, groupTarget.stage),
+      groupTarget.choice
+    );
+
+    const warning = document.getElementById("targetNoData");
+    if (warning) {
+      const hasData = !!getTrendSeries(groupTarget);
+      warning.hidden = hasData;
+      if (!hasData) warning.textContent = t("targetNoData");
+    }
+  }
+
+  function handleTargetFieldChange(field, value) {
+    const next = Object.assign({}, groupTarget, { [field]: value });
+    // Cascade: changing an upstream field resets everything downstream to
+    // its first available option, since the old choice may no longer exist
+    // for the new WMU/type/season/stage combination.
+    if (field === "wmu") {
+      next.mooseType = availableMooseTypes(next.wmu)[0];
+      next.season = availableSeasons(next.wmu, next.mooseType)[0];
+      next.stage = availableStages(next.wmu, next.mooseType, next.season)[0];
+      next.choice = availableChoices(next.wmu, next.mooseType, next.season, next.stage)[0];
+    } else if (field === "mooseType") {
+      next.season = availableSeasons(next.wmu, next.mooseType)[0];
+      next.stage = availableStages(next.wmu, next.mooseType, next.season)[0];
+      next.choice = availableChoices(next.wmu, next.mooseType, next.season, next.stage)[0];
+    } else if (field === "season") {
+      next.stage = availableStages(next.wmu, next.mooseType, next.season)[0];
+      next.choice = availableChoices(next.wmu, next.mooseType, next.season, next.stage)[0];
+    } else if (field === "stage") {
+      next.choice = availableChoices(next.wmu, next.mooseType, next.season, next.stage)[0];
+    }
+    setGroupTarget(next);
+  }
+
   function renderForecast() {
     const body = document.getElementById("forecastBody");
     if (!body) return;
@@ -562,12 +963,15 @@
       headRow.innerHTML = `<th>${cols.year}</th><th>${cols.cutoff}</th><th>${cols.expected}</th><th>${cols.status}</th>`;
     }
 
+    body.innerHTML = "";
+    const trend = getTrendSeries(groupTarget);
+    if (!trend) return;
+
     const startYear = new Date().getFullYear();
     const endYear = startYear + FORECAST_SPAN_YEARS;
-    const staggering = computeGroupStaggering(activeRoster, startYear, endYear, WMU24_TRENDS.bullGunPrimary);
+    const staggering = computeGroupStaggering(activeRoster, startYear, endYear, trend);
     const statusLabel = { gap: t("forecastStatusGap"), ok: t("forecastStatusOk"), stacked: t("forecastStatusStacked") };
 
-    body.innerHTML = "";
     staggering.forEach((row) => {
       const tr = document.createElement("tr");
       tr.innerHTML =
@@ -579,13 +983,81 @@
     });
   }
 
+  const HUNTER_COLORS = ["#2a6f97", "#bf5b04", "#2e7d32", "#8e24aa", "#c62828", "#00838f", "#6d4c41", "#616161"];
+
+  function hunterColor(index) {
+    return HUNTER_COLORS[index % HUNTER_COLORS.length];
+  }
+
+  function renderChart() {
+    const container = document.getElementById("pointsChart");
+    if (!container) return;
+    const heading = document.getElementById("chartHeading");
+    if (heading) heading.textContent = t("chartHeading");
+    const desc = document.getElementById("chartDesc");
+    if (desc) desc.textContent = t("chartDesc");
+
+    const startYear = new Date().getFullYear();
+    const endYear = startYear + FORECAST_SPAN_YEARS;
+    const series = buildPointsSeries(activeRoster, startYear, endYear);
+
+    const allYears = series.flatMap((s) => s.points.map((p) => p.year));
+    const allPoints = series.flatMap((s) => s.points.map((p) => p.points));
+    const minYear = allYears.length ? Math.min(...allYears) : startYear;
+    const maxYear = allYears.length ? Math.max(...allYears) : endYear;
+    const maxPoints = Math.max(1, ...allPoints);
+
+    const padL = 34, padR = 10, padT = 10, padB = 24;
+    const yearSpan = Math.max(1, maxYear - minYear);
+    const plotW = Math.max(400, yearSpan * 40);
+    const plotH = 220;
+    const W = plotW + padL + padR;
+    const H = plotH + padT + padB;
+    const xScale = (year) => padL + ((year - minYear) / yearSpan) * plotW;
+    const yScale = (pts) => padT + plotH - (pts / maxPoints) * plotH;
+
+    let grid = "";
+    [0, Math.round(maxPoints / 2), maxPoints].forEach((v) => {
+      const y = yScale(v).toFixed(1);
+      grid += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="currentColor" stroke-opacity="0.15" />`;
+      grid += `<text x="${padL - 6}" y="${Number(y) + 3}" text-anchor="end" font-size="10">${v}</text>`;
+    });
+    let xLabels = "";
+    for (let y = minYear; y <= maxYear; y++) {
+      xLabels += `<text x="${xScale(y).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="10">${y}</text>`;
+    }
+    const curX = xScale(startYear).toFixed(1);
+    const curLine = `<line x1="${curX}" y1="${padT}" x2="${curX}" y2="${H - padB}" stroke="currentColor" stroke-opacity="0.35" stroke-dasharray="3,3" />`;
+
+    let paths = "";
+    series.forEach((s, i) => {
+      if (!s.points.length) return;
+      const color = hunterColor(i);
+      const d = s.points.map((p, j) => (j === 0 ? "M" : "L") + xScale(p.year).toFixed(1) + " " + yScale(p.points).toFixed(1)).join(" ");
+      paths += `<path d="${d}" fill="none" stroke="${color}" stroke-width="2" />`;
+      s.points.forEach((p) => {
+        paths += `<circle cx="${xScale(p.year).toFixed(1)}" cy="${yScale(p.points).toFixed(1)}" r="2.5" fill="${color}"><title>${s.name} — ${p.year}: ${p.points}</title></circle>`;
+      });
+    });
+
+    container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${grid}${curLine}${paths}${xLabels}</svg>`;
+
+    const legend = document.getElementById("chartLegend");
+    if (legend) {
+      legend.innerHTML = series
+        .map((s, i) => `<span><i style="background:${hunterColor(i)}"></i>${s.name}</span>`)
+        .join("");
+    }
+  }
+
   function renderDataStatus() {
     const status = document.getElementById("dataStatus");
-    if (!status) return;
-    const count = activeRoster.length;
-    status.textContent = activeRosterIsUploaded
-      ? t("dataStatusUploaded", count)
-      : t("dataStatusDemo", count);
+    if (status) {
+      const count = activeRoster.length;
+      status.textContent = activeRosterIsUploaded ? t("dataStatusUploaded", count) : t("dataStatusDemo", count);
+    }
+    const exportBtn = document.getElementById("exportBtn");
+    if (exportBtn) exportBtn.textContent = t("exportBtn");
   }
 
   function render() {
@@ -593,6 +1065,8 @@
     renderBanner();
     renderRules();
     renderRoster();
+    renderTargetSelector();
+    renderChart();
     renderForecast();
     renderDataStatus();
     const toggle = document.getElementById("langToggle");
@@ -602,6 +1076,7 @@
   function loadRoster(roster) {
     activeRoster = roster;
     activeRosterIsUploaded = true;
+    persistState();
     render();
   }
 
@@ -625,6 +1100,15 @@
       });
   }
 
+  function exportRoster() {
+    if (typeof XLSX === "undefined") return;
+    const rows = rosterToRows(activeRoster);
+    const sheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, "Points Tracker");
+    XLSX.writeFile(workbook, "moose-group-points-export.xlsx");
+  }
+
   function setLang(lang) {
     if (lang !== "en" && lang !== "fr") return;
     currentLang = lang;
@@ -635,7 +1119,39 @@
     setLang(currentLang === "en" ? "fr" : "en");
   }
 
+  function handleDelegatedChange(event) {
+    const el = event.target;
+    if (!el || !el.dataset) return;
+    if (el.dataset.action === "edit-entry") {
+      const value = el.type === "checkbox" ? el.checked : el.value;
+      updateEntryField(el.dataset.name, Number(el.dataset.idx), el.dataset.field, value);
+      return;
+    }
+    const targetFieldMap = {
+      targetWmu: "wmu",
+      targetMooseType: "mooseType",
+      targetSeason: "season",
+      targetStage: "stage",
+      targetChoice: "choice"
+    };
+    if (el.id && targetFieldMap[el.id]) {
+      handleTargetFieldChange(targetFieldMap[el.id], el.value);
+    }
+  }
+
+  function handleDelegatedClick(event) {
+    const el = event.target.closest && event.target.closest("[data-action]");
+    if (!el) return;
+    const action = el.dataset.action;
+    if (action === "add-year") addYearForHunter(el.dataset.name);
+    else if (action === "delete-entry") deleteEntry(el.dataset.name, Number(el.dataset.idx));
+    else if (action === "add-hunter") addHunter();
+    else if (action === "export-roster") exportRoster();
+  }
+
   if (typeof document !== "undefined") {
+    document.addEventListener("change", handleDelegatedChange);
+    document.addEventListener("click", handleDelegatedClick);
     document.addEventListener("DOMContentLoaded", function () {
       const toggle = document.getElementById("langToggle");
       if (toggle) toggle.addEventListener("click", toggleLang);
@@ -661,15 +1177,30 @@
       getSeasonPhase,
       computeTimeline,
       parseRosterRows,
+      rosterToRows,
+      buildPointsSeries,
       loadRoster,
       getActiveRoster: () => activeRoster,
       isRosterUploaded: () => activeRosterIsUploaded,
       NORTHERN_PREFERENCE_POINT,
-      WMU24_TRENDS,
+      MOOSE_TRENDS,
+      DEFAULT_GROUP_TARGET,
+      getGroupTarget: () => groupTarget,
+      setGroupTarget,
+      getTrendSeries,
+      availableWMUs,
+      availableMooseTypes,
+      availableSeasons,
+      availableStages,
+      availableChoices,
       projectCutoff,
       drawProbability,
-      buildBullForecast,
+      buildHunterForecast,
       computeGroupStaggering,
+      updateEntryField,
+      addYearForHunter,
+      deleteEntry,
+      addHunterNamed,
       render
     };
   }

@@ -140,17 +140,18 @@ check("renderRules renders a card in the DOM for ruleAllocation2027", () => {
   assert.ok(card.querySelector("h3").textContent.length > 0);
 });
 
-check("renderRoster renders one row per pointsHistory entry, including Alex's 2026 claimed row", () => {
+check("renderRoster renders one editable row per pointsHistory entry plus an add-year row per hunter, including Alex's 2026 claimed row", () => {
   APP.render();
-  const rows = win.document.querySelectorAll("#rosterBody tr");
+  const allRows = win.document.querySelectorAll("#rosterBody tr");
   const totalEntries = APP.HUNTER_SEED.reduce((sum, h) => sum + h.pointsHistory.length, 0);
-  assert.strictEqual(rows.length, totalEntries);
-  const alexRow = Array.from(rows).find(
+  assert.strictEqual(allRows.length, totalEntries + APP.HUNTER_SEED.length, "one row per entry plus one add-year row per hunter");
+  const entryRows = Array.from(allRows).filter((tr) => tr.children.length > 1);
+  const alexRow = entryRows.find(
     (tr) => tr.children[0].textContent === "Alex" && tr.children[1].textContent === "2026"
   );
   assert.ok(alexRow, "Alex 2026 row should exist");
-  assert.strictEqual(alexRow.children[3].textContent, "Cow/calf");
-  assert.strictEqual(alexRow.children[4].textContent, "Yes");
+  assert.strictEqual(alexRow.children[3].querySelector("input").value, "Cow/calf");
+  assert.strictEqual(alexRow.children[4].querySelector("input").checked, true);
 });
 
 check("setLang('fr') swaps rendered rule text to French", () => {
@@ -173,7 +174,7 @@ check("loadRoster() swaps the active roster, marks it as uploaded, and re-render
   assert.strictEqual(APP.isRosterUploaded(), true);
   assert.strictEqual(APP.getActiveRoster(), uploaded);
   const rows = win.document.querySelectorAll("#rosterBody tr");
-  assert.strictEqual(rows.length, 1);
+  assert.strictEqual(rows.length, 2, "one entry row plus one add-year row");
   assert.strictEqual(rows[0].children[0].textContent, "Uploaded Hunter");
   const status = win.document.getElementById("dataStatus").textContent;
   assert.ok(status.includes("1"), "data status should reflect the uploaded roster's hunter count");
