@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WMU 24 Moose Tag Tracker</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 1rem; }
+  header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .5rem; }
+  #deadlineBanner { padding: .75rem 1rem; border-radius: .5rem; margin: 1rem 0; background: #eef; }
+  #deadlineBanner.urgent { background: #fee; border: 1px solid #c33; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+  .card { border: 1px solid #ccc; border-radius: .5rem; padding: .75rem 1rem; }
+  .card h3 { margin-top: 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+  th, td { border: 1px solid #ccc; padding: .4rem .6rem; text-align: left; }
+  button { cursor: pointer; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="appTitle">WMU 24 Moose Tag Tracker</h1>
+  <button id="langToggle" type="button">FR</button>
+</header>
+
+<div id="deadlineBanner"></div>
+
+<section id="rulesSection">
+  <h2 id="rulesHeading">Key Rules</h2>
+  <div class="cards" id="rulesCards"></div>
+</section>
+
+<section id="rosterSection">
+  <h2 id="rosterHeading">Roster</h2>
+  <table id="rosterTable">
+    <thead>
+      <tr><th>Name</th><th>Year</th><th>Points</th><th>Tag</th><th>Claimed</th></tr>
+    </thead>
+    <tbody id="rosterBody"></tbody>
+  </table>
+</section>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------------------------------------------------------------------
+  // NORTHERN_PREFERENCE_POINT
+  // ---------------------------------------------------------------------
+  // Flat bonus applied only when comparing hunters inside MPR (Moose Point
+  // Reservation) allocation math via computeTimeline(). It never touches a
+  // hunter's actual banked pointsHistory values.
+  const NORTHERN_PREFERENCE_POINT = 1;
+
+  // ---------------------------------------------------------------------
+  // I18N
+  // ---------------------------------------------------------------------
+  const I18N = {
+    en: {
+      appTitle: "WMU 24 Moose Tag Tracker",
+      rulesHeading: "Key Rules",
+      rosterHeading: "Roster",
+      table: { name: "Name", year: "Year", points: "Points", tag: "Tag", claimed: "Claimed", yes: "Yes", no: "No" },
+      ruleLicence: {
+        h: "Licence Requirements",
+        p: "Every hunter in the party must hold a valid Outdoors Card and moose licence tag validation for the current season before heading into the field."
+      },
+      ruleRadius: {
+        h: "Hunt Party Radius",
+        p: "All members of the hunt party must remain within legal calling/shooting distance of one another as defined by the WMU 24 seal conditions."
+      },
+      ruleKill: {
+        h: "One Kill Per Tag",
+        p: "Each validated tag entitles the party to harvest exactly one moose of the tag's designated type (bull, cow, or calf)."
+      },
+      ruleNotch: {
+        h: "Notch & Attach Immediately",
+        p: "The tag must be notched and physically attached to the carcass immediately after the animal is harvested, before it is moved."
+      },
+      ruleReport: {
+        h: "Report the Harvest",
+        p: "Harvests must be reported to the MNR within the province's mandatory reporting window, even if the tag was not filled."
+      },
+      ruleWatch: {
+        h: "2027 Allocation Changes",
+        p: "Starting with 2027 applications, being AWARDED your first choice in the second-chance draw now forfeits your points whether or not you claim the tag — a decline no longer protects your points. Applying 99Z as your first choice is unaffected: it still keeps and grows your points as before, so our group's 99Z + Calf strategy (99Z first choice, calf second/third choice) continues to work exactly as it always has. Only ever put a real WMU as your first choice in second-chance if you intend to claim it."
+      },
+      ruleAllocation2027: {
+        h: "New 2027 Claim Deadline & Last Chance Stage",
+        p: "The second-chance tag claim deadline is moving from the end of moose season (~Dec 15) to a date before moose season opens — date to be confirmed by MNR, with details expected through 2026. A brand-new “Last Chance Allocation” stage is also being introduced: any tags left unclaimed or unawarded after the first two stages become available for purchase by any resident hunter, with no effect on points. The original proposal floated late August to mid-September as a rough window for this stage, but that window is provisional and not yet finalized."
+      },
+      deadline: {
+        applicationOpen: (d) => `Moose tag applications are open. ${d} day${d === 1 ? "" : "s"} left to apply.`,
+        applicationClosed: (d) => `Applications are closed. Draw results in ${d} day${d === 1 ? "" : "s"}.`,
+        drawResults: (d) => `Primary draw results window. ${d} day${d === 1 ? "" : "s"} remain in this window.`,
+        secondChanceOpen: (d) => `Second-chance applications are open. ${d} day${d === 1 ? "" : "s"} left to apply.`,
+        secondChanceClaim: (d) => `Second-chance tag claim deadline in ${d} day${d === 1 ? "" : "s"} (deadline ~Dec 15).`,
+        secondChanceClaimAdvanced: () => `Second-chance tag claim window is open. Deadline moves before moose season opens this year — date TBD — MNR to confirm.`,
+        lastChanceUpcoming: (d) => `Last Chance Allocation opens in about ${d} day${d === 1 ? "" : "s"} (provisional window — date TBD — MNR to confirm).`,
+        lastChance: () => `Last Chance Allocation window is open for unclaimed tags (provisional window — date TBD — MNR to confirm).`,
+        seasonActive: (d) => `Moose season is open. ${d} day${d === 1 ? "" : "s"} remain.`,
+        offSeason: (d) => `Off season. Applications open again in ${d} day${d === 1 ? "" : "s"}.`
+      }
+    },
+    fr: {
+      appTitle: "Suivi des contingents d'orignal ZGF 24",
+      rulesHeading: "Règles clés",
+      rosterHeading: "Liste des chasseurs",
+      table: { name: "Nom", year: "Année", points: "Points", tag: "Contingent", claimed: "Réclamé", yes: "Oui", no: "Non" },
+      ruleLicence: {
+        h: "Exigences de permis",
+        p: "Chaque chasseur du groupe doit posséder une carte Plein air valide et un contingent d'orignal validé pour la saison en cours avant de partir sur le terrain."
+      },
+      ruleRadius: {
+        h: "Rayon du groupe de chasse",
+        p: "Tous les membres du groupe doivent demeurer à une distance légale d'appel/de tir les uns des autres, tel que défini par les conditions du sceau de la ZGF 24."
+      },
+      ruleKill: {
+        h: "Une prise par contingent",
+        p: "Chaque contingent validé permet au groupe de récolter exactement un orignal du type désigné sur le contingent (mâle, femelle ou veau)."
+      },
+      ruleNotch: {
+        h: "Encocher et fixer immédiatement",
+        p: "Le contingent doit être encoché et fixé physiquement à la carcasse immédiatement après la récolte, avant tout déplacement."
+      },
+      ruleReport: {
+        h: "Déclarer la récolte",
+        p: "Les récoltes doivent être déclarées au MRN dans le délai obligatoire de la province, même si le contingent n'a pas été utilisé."
+      },
+      ruleWatch: {
+        h: "Changements d'attribution 2027",
+        p: "Dès les demandes de 2027, se voir ATTRIBUER son premier choix lors du tirage de deuxième chance fait maintenant perdre les points, qu'on réclame le contingent ou non — un refus ne protège plus les points. Le choix de 99Z comme premier choix n'est pas touché : il continue de conserver et d'augmenter les points comme avant, donc la stratégie 99Z + veau de notre groupe (99Z en premier choix, veau en deuxième/troisième choix) fonctionne toujours exactement comme avant. Ne mettez un vrai ZGF en premier choix en deuxième chance que si vous avez l'intention de le réclamer."
+      },
+      ruleAllocation2027: {
+        h: "Nouvelle date limite 2027 et étape «Dernière chance»",
+        p: "La date limite pour réclamer un contingent de deuxième chance passe de la fin de la saison de l'orignal (~15 déc.) à une date avant l'ouverture de la saison — date à confirmer par le MRN, avec des détails attendus au cours de 2026. Une toute nouvelle étape «Attribution de dernière chance» est aussi introduite : tout contingent non réclamé ou non attribué après les deux premières étapes devient disponible à l'achat pour tout chasseur résident, sans effet sur les points. La proposition initiale suggérait la fin août à la mi-septembre comme fenêtre approximative pour cette étape, mais cette fenêtre est provisoire et n'est pas encore finalisée."
+      },
+      deadline: {
+        applicationOpen: (d) => `Les demandes de contingent d'orignal sont ouvertes. Il reste ${d} jour${d === 1 ? "" : "s"} pour postuler.`,
+        applicationClosed: (d) => `Les demandes sont fermées. Résultats du tirage dans ${d} jour${d === 1 ? "" : "s"}.`,
+        drawResults: (d) => `Période des résultats du tirage principal. Il reste ${d} jour${d === 1 ? "" : "s"} dans cette fenêtre.`,
+        secondChanceOpen: (d) => `Les demandes de deuxième chance sont ouvertes. Il reste ${d} jour${d === 1 ? "" : "s"} pour postuler.`,
+        secondChanceClaim: (d) => `Date limite pour réclamer un contingent de deuxième chance dans ${d} jour${d === 1 ? "" : "s"} (échéance ~15 déc.).`,
+        secondChanceClaimAdvanced: () => `La fenêtre de réclamation de deuxième chance est ouverte. La date limite avance avant l'ouverture de la saison cette année — date à confirmer par le MRN.`,
+        lastChanceUpcoming: (d) => `L'attribution de dernière chance ouvre dans environ ${d} jour${d === 1 ? "" : "s"} (fenêtre provisoire — date à confirmer par le MRN).`,
+        lastChance: () => `La fenêtre d'attribution de dernière chance est ouverte pour les contingents non réclamés (fenêtre provisoire — date à confirmer par le MRN).`,
+        seasonActive: (d) => `La saison de l'orignal est ouverte. Il reste ${d} jour${d === 1 ? "" : "s"}.`,
+        offSeason: (d) => `Hors saison. Les demandes rouvrent dans ${d} jour${d === 1 ? "" : "s"}.`
+      }
+    }
+  };
+
+  let currentLang = "en";
+
+  function t(key, ...args) {
+    const parts = key.split(".");
+    let val = I18N[currentLang];
+    for (const p of parts) {
+      if (val == null) return "";
+      val = val[p];
+    }
+    if (typeof val === "function") return val(...args);
+    return val;
+  }
+
+  // ---------------------------------------------------------------------
+  // HUNTER_SEED - fallback/demo roster data used when no Google Sheet is
+  // configured.
+  // ---------------------------------------------------------------------
+  const HUNTER_SEED = [
+    {
+      name: "Alex",
+      pointsHistory: [
+        { year: 2023, points: 1, tagType: null, claimed: false },
+        { year: 2024, points: 2, tagType: null, claimed: false },
+        { year: 2025, points: 3, tagType: null, claimed: false },
+        { year: 2026, points: 0, tagType: "Cow/calf", claimed: true }
+      ]
+    },
+    {
+      name: "Mike",
+      pointsHistory: [
+        { year: 2023, points: 1, tagType: null, claimed: false },
+        { year: 2024, points: 2, tagType: null, claimed: false },
+        { year: 2025, points: 3, tagType: null, claimed: false },
+        { year: 2026, points: 4, tagType: null, claimed: false }
+      ]
+    },
+    {
+      name: "Steve",
+      pointsHistory: [
+        { year: 2023, points: 1, tagType: null, claimed: false },
+        { year: 2024, points: 2, tagType: null, claimed: false },
+        { year: 2025, points: 3, tagType: null, claimed: false },
+        { year: 2026, points: 4, tagType: null, claimed: false }
+      ]
+    }
+  ];
+
+  // ---------------------------------------------------------------------
+  // getSeasonPhase(today) - deadline-tracker banner logic.
+  // ---------------------------------------------------------------------
+  function daysBetween(from, to) {
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const a = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+    const b = new Date(to.getFullYear(), to.getMonth(), to.getDate());
+    return Math.round((b - a) / msPerDay);
+  }
+
+  function getSeasonPhase(today) {
+    const year = today.getFullYear();
+    const md = (today.getMonth() + 1) * 100 + today.getDate(); // e.g. Aug 1 -> 801
+
+    if (md >= 101 && md <= 131) {
+      const deadline = new Date(year, 0, 31);
+      const d = daysBetween(today, deadline);
+      return { key: "applicationOpen", daysUntil: d, urgent: d <= 7 };
+    }
+    if (md >= 201 && md <= 430) {
+      const deadline = new Date(year, 3, 30);
+      const d = daysBetween(today, deadline);
+      return { key: "applicationClosed", daysUntil: d, urgent: false };
+    }
+    if (md >= 501 && md <= 531) {
+      const deadline = new Date(year, 4, 31);
+      const d = daysBetween(today, deadline);
+      return { key: "drawResults", daysUntil: d, urgent: false };
+    }
+    if (md >= 601 && md <= 731) {
+      const deadline = new Date(year, 6, 31);
+      const d = daysBetween(today, deadline);
+      return { key: "secondChanceOpen", daysUntil: d, urgent: d <= 7 };
+    }
+
+    // Aug 1 - Nov 15 window: this is where the confirmed 2027 allocation
+    // changes (ERO 019-7813) branch the logic. Pre-2027 seasons keep the
+    // original single secondChanceClaim phase running to ~Dec 15; 2027+
+    // seasons split this span into the advanced claim window plus the new
+    // Last Chance Allocation stage, both with dates still TBD from MNR.
+    if (md >= 801 && md <= 1115) {
+      if (year < 2027) {
+        const deadline = new Date(year, 11, 15);
+        const d = daysBetween(today, deadline);
+        return { key: "secondChanceClaim", daysUntil: d, urgent: d <= 14 };
+      }
+
+      if (md >= 801 && md <= 831) {
+        return { key: "secondChanceClaimAdvanced", daysUntil: null, urgent: true };
+      }
+      if (md >= 901 && md <= 914) {
+        const deadline = new Date(year, 8, 15);
+        const d = daysBetween(today, deadline);
+        return { key: "lastChanceUpcoming", daysUntil: d, urgent: d <= 7 };
+      }
+      // Sep 15 - Nov 15
+      return { key: "lastChance", daysUntil: null, urgent: false };
+    }
+
+    if (md >= 1116 && md <= 1215) {
+      const deadline = new Date(year, 11, 15);
+      const d = daysBetween(today, deadline);
+      return { key: "seasonActive", daysUntil: d, urgent: d <= 3 };
+    }
+
+    // Dec 16 - Dec 31, off season until next application window opens.
+    const nextOpen = new Date(year + 1, 0, 1);
+    const d = daysBetween(today, nextOpen);
+    return { key: "offSeason", daysUntil: d, urgent: false };
+  }
+
+  // ---------------------------------------------------------------------
+  // computeTimeline - MPR comparison helper. NORTHERN_PREFERENCE_POINT is
+  // applied here only, never to a hunter's banked pointsHistory values.
+  // ---------------------------------------------------------------------
+  function bankedPoints(hunter) {
+    const history = hunter.pointsHistory;
+    if (!history || history.length === 0) return 0;
+    return history[history.length - 1].points;
+  }
+
+  function computeTimeline(hunters) {
+    return hunters
+      .map((hunter) => ({
+        name: hunter.name,
+        banked: bankedPoints(hunter),
+        mpr: bankedPoints(hunter) + NORTHERN_PREFERENCE_POINT
+      }))
+      .sort((a, b) => b.mpr - a.mpr);
+  }
+
+  // ---------------------------------------------------------------------
+  // Rendering
+  // ---------------------------------------------------------------------
+  const RULE_KEYS = ["ruleLicence", "ruleRadius", "ruleKill", "ruleNotch", "ruleReport", "ruleWatch", "ruleAllocation2027"];
+
+  function renderRules() {
+    const container = document.getElementById("rulesCards");
+    if (!container) return;
+    container.innerHTML = "";
+    RULE_KEYS.forEach((key) => {
+      const rule = I18N[currentLang][key];
+      if (!rule) return;
+      const card = document.createElement("div");
+      card.className = "card";
+      card.dataset.rule = key;
+      const h = document.createElement("h3");
+      h.textContent = rule.h;
+      const p = document.createElement("p");
+      p.textContent = rule.p;
+      card.appendChild(h);
+      card.appendChild(p);
+      container.appendChild(card);
+    });
+  }
+
+  function renderRoster() {
+    const body = document.getElementById("rosterBody");
+    if (!body) return;
+    body.innerHTML = "";
+    HUNTER_SEED.forEach((hunter) => {
+      hunter.pointsHistory.forEach((entry) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + hunter.name + "</td>" +
+          "<td>" + entry.year + "</td>" +
+          "<td>" + entry.points + "</td>" +
+          "<td>" + (entry.tagType || "—") + "</td>" +
+          "<td>" + (entry.claimed ? t("table.yes") : t("table.no")) + "</td>";
+        body.appendChild(tr);
+      });
+    });
+  }
+
+  function renderBanner() {
+    const banner = document.getElementById("deadlineBanner");
+    if (!banner) return;
+    const phase = getSeasonPhase(new Date());
+    banner.textContent = t("deadline." + phase.key, phase.daysUntil);
+    banner.classList.toggle("urgent", !!phase.urgent);
+  }
+
+  function renderStaticText() {
+    const map = {
+      appTitle: "appTitle",
+      rulesHeading: "rulesHeading",
+      rosterHeading: "rosterHeading"
+    };
+    Object.keys(map).forEach((key) => {
+      const el = document.getElementById(map[key]);
+      if (el) el.textContent = t(key);
+    });
+  }
+
+  function render() {
+    renderStaticText();
+    renderBanner();
+    renderRules();
+    renderRoster();
+    const toggle = document.getElementById("langToggle");
+    if (toggle) toggle.textContent = currentLang === "en" ? "FR" : "EN";
+  }
+
+  function setLang(lang) {
+    if (lang !== "en" && lang !== "fr") return;
+    currentLang = lang;
+    render();
+  }
+
+  function toggleLang() {
+    setLang(currentLang === "en" ? "fr" : "en");
+  }
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("DOMContentLoaded", function () {
+      const toggle = document.getElementById("langToggle");
+      if (toggle) toggle.addEventListener("click", toggleLang);
+      render();
+    });
+  }
+
+  // Expose for tests (jsdom) without affecting the browser UI.
+  if (typeof window !== "undefined") {
+    window.APP = {
+      I18N,
+      t,
+      setLang,
+      getLang: () => currentLang,
+      HUNTER_SEED,
+      getSeasonPhase,
+      computeTimeline,
+      NORTHERN_PREFERENCE_POINT,
+      render
+    };
+  }
+})();
+</script>
+
+</body>
+</html>
