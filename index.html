@@ -45,6 +45,17 @@
   </table>
 </section>
 
+<section id="forecastSection">
+  <h2 id="forecastHeading">Group Staggering Forecast</h2>
+  <p id="forecastDesc"></p>
+  <table id="forecastTable">
+    <thead>
+      <tr><th>Year</th><th>Projected bull cutoff</th><th>Expected bulls drawn</th><th>Status</th></tr>
+    </thead>
+    <tbody id="forecastBody"></tbody>
+  </table>
+</section>
+
 <section id="dataSection">
   <h2 id="dataHeading">Data</h2>
   <p id="dataStatus"></p>
@@ -76,6 +87,12 @@
       dataStatusDemo: (n) => `Showing demo data (${n} hunter${n === 1 ? "" : "s"}). Upload your group's filled-in .xlsx template to replace it.`,
       dataStatusUploaded: (n) => `Showing uploaded data for ${n} hunter${n === 1 ? "" : "s"}.`,
       dataStatusError: "Couldn't read that file. Make sure it's the roster template .xlsx with a Hunter/Year/Points row per entry.",
+      forecastHeading: "Group Staggering Forecast",
+      forecastDesc: "Bull is everyone's first choice, so this projects how many hunters are likely to draw a WMU 24 bull tag each year. The cutoff line is fitted to five years of real MNR draw data, not a guessed number, and each hunter's odds ramp up rather than flip on/off at the line. Treat this as a planning signal: a gap year means the group is unlikely to have a bull tag holder that year; a stacked year means several hunters are likely ready at once, when the party only needs one.",
+      forecastTable: { year: "Year", cutoff: "Projected bull cutoff", expected: "Expected bulls drawn", status: "Status" },
+      forecastStatusGap: "Gap",
+      forecastStatusOk: "Covered",
+      forecastStatusStacked: "Stacked",
       table: { name: "Name", year: "Year", points: "Points", tag: "Tag", claimed: "Claimed", yes: "Yes", no: "No" },
       ruleLicence: {
         h: "Licence Requirements",
@@ -126,6 +143,12 @@
       dataStatusDemo: (n) => `Affichage des données de démonstration (${n} chasseur${n === 1 ? "" : "s"}). Téléversez le modèle .xlsx rempli de votre groupe pour les remplacer.`,
       dataStatusUploaded: (n) => `Affichage des données téléversées pour ${n} chasseur${n === 1 ? "" : "s"}.`,
       dataStatusError: "Impossible de lire ce fichier. Assurez-vous qu'il s'agit du modèle de liste .xlsx avec une ligne Hunter/Year/Points par entrée.",
+      forecastHeading: "Prévision d'étalement du groupe",
+      forecastDesc: "Le bull étant le premier choix de tout le monde, ceci projette combien de chasseurs sont susceptibles de tirer un contingent de bull en ZGF 24 chaque année. La ligne de seuil est ajustée sur cinq ans de vraies données de tirage du MRN, pas un chiffre deviné, et les chances de chaque chasseur augmentent progressivement plutôt que de basculer d'un coup au seuil. À prendre comme signal de planification : une année \"trou\" veut dire que le groupe risque de ne pas avoir de détenteur de contingent de bull cette année-là; une année \"empilée\" veut dire que plusieurs chasseurs sont probablement prêts en même temps, alors que le groupe n'a besoin que d'un seul contingent.",
+      forecastTable: { year: "Année", cutoff: "Seuil de bull projeté", expected: "Bulls attendus", status: "Statut" },
+      forecastStatusGap: "Trou",
+      forecastStatusOk: "Couvert",
+      forecastStatusStacked: "Empilé",
       table: { name: "Nom", year: "Année", points: "Points", tag: "Contingent", claimed: "Réclamé", yes: "Oui", no: "Non" },
       ruleLicence: {
         h: "Exigences de permis",
@@ -322,6 +345,97 @@
   }
 
   // ---------------------------------------------------------------------
+  // WMU24_TRENDS - real full-award point cutoffs for WMU 24, Bull / Gun /
+  // Primary / 1st choice, from Ontario's own moose tag allocation stats
+  // (2021-2025). This is the group's real bottleneck: bull is everyone's
+  // stated first choice, and the cutoff to guarantee one has held in the
+  // 10-12 point range rather than moving in a clean straight line.
+  // ---------------------------------------------------------------------
+  const WMU24_TRENDS = {
+    bullGunPrimary: [
+      { year: 2021, cutoff: 11 },
+      { year: 2022, cutoff: 10 },
+      { year: 2023, cutoff: 12 },
+      { year: 2024, cutoff: 12 },
+      { year: 2025, cutoff: 12 }
+    ]
+  };
+
+  // ---------------------------------------------------------------------
+  // Forecast engine - replaces a flat, hand-set MPR guess with a cutoff
+  // trend fitted to WMU24_TRENDS and a probability ramp instead of a hard
+  // pass/fail threshold, since the real data shows partial award rates
+  // right around the cutoff rather than a clean cliff.
+  // ---------------------------------------------------------------------
+  function linearRegression(points) {
+    const n = points.length;
+    const sumX = points.reduce((s, p) => s + p.x, 0);
+    const sumY = points.reduce((s, p) => s + p.y, 0);
+    const sumXY = points.reduce((s, p) => s + p.x * p.y, 0);
+    const sumXX = points.reduce((s, p) => s + p.x * p.x, 0);
+    const denom = n * sumXX - sumX * sumX;
+    const slope = denom === 0 ? 0 : (n * sumXY - sumX * sumY) / denom;
+    const intercept = (sumY - slope * sumX) / n;
+    return { slope, intercept };
+  }
+
+  function projectCutoff(trend, targetYear) {
+    const points = trend.map((p) => ({ x: p.year, y: p.cutoff }));
+    const { slope, intercept } = linearRegression(points);
+    return slope * targetYear + intercept;
+  }
+
+  // Full award at/above cutoff, zero two points below it, linear ramp
+  // between - a smoothed stand-in for the partial-award brackets seen in
+  // the real per-year data (e.g. 5%, 36%, 73% at the bracket just under a
+  // given year's cutoff), since simulating those exactly would need a
+  // cutoff-bracket table for every future year rather than just a trend.
+  function drawProbability(points, cutoff) {
+    if (points >= cutoff) return 1;
+    if (points <= cutoff - 2) return 0;
+    return (points - (cutoff - 2)) / 2;
+  }
+
+  function projectedPoints(hunter, year, startYear) {
+    return bankedPoints(hunter) + Math.max(0, year - startYear);
+  }
+
+  function effectivePoints(hunter, year, startYear) {
+    const bonus = isNorthernResident(hunter) ? NORTHERN_PREFERENCE_POINT : 0;
+    return projectedPoints(hunter, year, startYear) + bonus;
+  }
+
+  function buildBullForecast(hunter, startYear, endYear, trend) {
+    const results = [];
+    for (let year = startYear; year <= endYear; year++) {
+      const cutoff = projectCutoff(trend, year);
+      results.push({
+        year,
+        points: projectedPoints(hunter, year, startYear),
+        cutoff: Math.round(cutoff * 10) / 10,
+        probability: drawProbability(effectivePoints(hunter, year, startYear), cutoff)
+      });
+    }
+    return results;
+  }
+
+  function computeGroupStaggering(hunters, startYear, endYear, trend) {
+    const perYear = [];
+    for (let year = startYear; year <= endYear; year++) {
+      const cutoff = projectCutoff(trend, year);
+      const expected = hunters.reduce(
+        (sum, hunter) => sum + drawProbability(effectivePoints(hunter, year, startYear), cutoff),
+        0
+      );
+      let status = "ok";
+      if (expected < 0.4) status = "gap";
+      else if (expected > 1.2) status = "stacked";
+      perYear.push({ year, cutoff: Math.round(cutoff * 10) / 10, expected: Math.round(expected * 100) / 100, status });
+    }
+    return perYear;
+  }
+
+  // ---------------------------------------------------------------------
   // parseRosterRows - turns flat spreadsheet rows (one row per hunter per
   // year, as read from the roster .xlsx template - Hunter/Year/Points/
   // TagType/Claimed/WMU/Season/MooseType/NorthernResident) into the
@@ -433,6 +547,38 @@
     });
   }
 
+  const FORECAST_SPAN_YEARS = 7; // years shown beyond the current year
+
+  function renderForecast() {
+    const body = document.getElementById("forecastBody");
+    if (!body) return;
+    const heading = document.getElementById("forecastHeading");
+    if (heading) heading.textContent = t("forecastHeading");
+    const desc = document.getElementById("forecastDesc");
+    if (desc) desc.textContent = t("forecastDesc");
+    const headRow = document.querySelector("#forecastTable thead tr");
+    if (headRow) {
+      const cols = t("forecastTable");
+      headRow.innerHTML = `<th>${cols.year}</th><th>${cols.cutoff}</th><th>${cols.expected}</th><th>${cols.status}</th>`;
+    }
+
+    const startYear = new Date().getFullYear();
+    const endYear = startYear + FORECAST_SPAN_YEARS;
+    const staggering = computeGroupStaggering(activeRoster, startYear, endYear, WMU24_TRENDS.bullGunPrimary);
+    const statusLabel = { gap: t("forecastStatusGap"), ok: t("forecastStatusOk"), stacked: t("forecastStatusStacked") };
+
+    body.innerHTML = "";
+    staggering.forEach((row) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td>" + row.year + "</td>" +
+        "<td>" + row.cutoff + "</td>" +
+        "<td>" + row.expected + "</td>" +
+        "<td>" + statusLabel[row.status] + "</td>";
+      body.appendChild(tr);
+    });
+  }
+
   function renderDataStatus() {
     const status = document.getElementById("dataStatus");
     if (!status) return;
@@ -447,6 +593,7 @@
     renderBanner();
     renderRules();
     renderRoster();
+    renderForecast();
     renderDataStatus();
     const toggle = document.getElementById("langToggle");
     if (toggle) toggle.textContent = currentLang === "en" ? "FR" : "EN";
@@ -518,6 +665,11 @@
       getActiveRoster: () => activeRoster,
       isRosterUploaded: () => activeRosterIsUploaded,
       NORTHERN_PREFERENCE_POINT,
+      WMU24_TRENDS,
+      projectCutoff,
+      drawProbability,
+      buildBullForecast,
+      computeGroupStaggering,
       render
     };
   }
