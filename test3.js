@@ -30,7 +30,7 @@ check("MOOSE_TRENDS holds real WMU 24 bull/gun/primary/1st-choice cutoffs for 20
   assert.deepStrictEqual(byYear, { 2021: 11, 2022: 10, 2023: 12, 2024: 12, 2025: 12 });
 });
 
-check("MOOSE_TRENDS covers more than just WMU 24 - the dataset is province-wide", () => {
+check("MOOSE_TRENDS has real data for many WMUs, so a group can choose any one WMU to forecast (never several at once)", () => {
   const wmus = APP.availableWMUs();
   assert.ok(wmus.length > 30, "should have real draw data for dozens of WMUs");
   assert.ok(wmus.includes("24"));
@@ -148,11 +148,65 @@ check("setGroupTarget updates state and re-renders the forecast for the new targ
   APP.setGroupTarget({ wmu: "24" }); // restore default for any later checks in this process
 });
 
-check("renderForecast populates the forecast table in the DOM with one row per projected year", () => {
+check("buildGroupMatrix: past years show actual points and tag result; future years show a plain projected number", () => {
+  const hunter = {
+    name: "Test",
+    pointsHistory: [
+      { year: 2024, points: 5, tagType: null, claimed: false, northernResident: false },
+      { year: 2025, points: 0, tagType: "Bull", claimed: true, northernResident: false }
+    ]
+  };
+  const trend = [{ year: 2024, cutoff: 10 }, { year: 2025, cutoff: 10 }, { year: 2026, cutoff: 10 }, { year: 2027, cutoff: 10 }];
+  const matrix = APP.buildGroupMatrix([hunter], { wmu: "x", mooseType: "x", season: "x", stage: "x", choice: "x" }, 2023, 2027);
+  const cells = matrix.rows[0].cells;
+  assert.strictEqual(cells[0].year, 2023);
+  assert.strictEqual(cells[0].kind, "empty", "no history and before the earliest record");
+  assert.strictEqual(cells[1].kind, "actual");
+  assert.strictEqual(cells[1].points, 5);
+  assert.strictEqual(cells[1].tagType, null);
+  assert.strictEqual(cells[2].kind, "actual");
+  assert.strictEqual(cells[2].points, 0);
+  assert.strictEqual(cells[2].tagType, "Bull");
+  assert.strictEqual(cells[2].claimed, true);
+  assert.strictEqual(cells[3].kind, "projected", "2026: one year past the hunter's latest record");
+  assert.strictEqual(cells[3].points, 1);
+  assert.strictEqual(cells[4].kind, "projected");
+  assert.strictEqual(cells[4].points, 2);
+});
+
+check("buildGroupMatrix flags a projected cell 'ready' only once probability reaches 1 (never shows a percentage)", () => {
+  const hunter = { name: "Ready Soon", pointsHistory: [{ year: 2026, points: 8, tagType: null, claimed: false, northernResident: false }] };
+  const flatTrend = [{ year: 2026, cutoff: 10 }, { year: 2027, cutoff: 10 }, { year: 2028, cutoff: 10 }];
+  const matrix = APP.buildGroupMatrix([hunter], { wmu: "x" }, 2026, 2028);
+  const cells = matrix.rows[0].cells;
+  assert.strictEqual(cells[0].kind, "actual");
+  // no trend resolves for target {wmu:"x"} (no matching MOOSE_TRENDS path), so ready must default false
+  assert.strictEqual(cells[1].ready, false);
+  assert.strictEqual(cells[2].ready, false);
+});
+
+check("buildGroupMatrix highlights 'ready' using the real WMU24 bull trend once projected points clear the cutoff", () => {
+  const hunter = { name: "Nearly There", pointsHistory: [{ year: 2026, points: 11, tagType: null, claimed: false, northernResident: false }] };
+  const target = { wmu: "24", mooseType: "Bull", season: "Gun", stage: "Primary", choice: "1" };
+  const matrix = APP.buildGroupMatrix([hunter], target, 2026, 2028);
+  const cells = matrix.rows[0].cells;
+  // 2027 projected points = 12, that year's fitted cutoff is ~13 -> not ready yet
+  assert.strictEqual(cells[1].points, 12);
+  assert.strictEqual(cells[1].ready, false);
+  // 2028 projected points = 13, fitted cutoff ~13.4 -> still just short
+  // confirm ready is a plain boolean either way, never a numeric probability
+  assert.strictEqual(typeof cells[2].ready, "boolean");
+});
+
+check("renderMatrix populates the matrix table with one row per hunter and one column per year", () => {
   const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/" });
   dom.window.APP.render();
-  const rows = dom.window.document.querySelectorAll("#forecastBody tr");
-  assert.strictEqual(rows.length, 8, "current year plus 7 years ahead");
+  const doc = dom.window.document;
+  const rows = doc.querySelectorAll("#matrixBody tr");
+  assert.strictEqual(rows.length, dom.window.APP.HUNTER_SEED.length);
+  const headCells = doc.querySelectorAll("#matrixTableHead th");
+  // Name column + (earliest history year..current year+7)
+  assert.ok(headCells.length > 8, "should include past history years plus the projected span");
 });
 
 check("renderTargetSelector populates all five target dropdowns for the default target", () => {

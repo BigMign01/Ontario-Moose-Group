@@ -102,15 +102,6 @@
   section { margin-bottom: 2rem; }
   section > p:first-of-type { margin-top: .15rem; }
 
-  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .85rem; margin: 1rem 0 1.5rem; }
-  .stat-card {
-    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
-    padding: 1rem 1.1rem;
-  }
-  .stat-card .stat-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-dim); font-weight: 600; margin-bottom: .3rem; }
-  .stat-card .stat-value { font-family: "Fraunces", Georgia, serif; font-size: 1.5rem; font-weight: 600; }
-  .stat-card .stat-sub { font-size: .82rem; color: var(--ink-dim); margin-top: .15rem; }
-
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
   .card {
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
@@ -169,16 +160,27 @@
     border-radius: .5rem; padding: .6rem .8rem; margin-top: .9rem; font-size: .88rem;
   }
 
-  .pill { display: inline-block; padding: .18rem .6rem; border-radius: 999px; font-size: .78rem; font-weight: 700; }
-  .pill-gap { background: var(--red-soft); color: var(--red); }
-  .pill-ok { background: var(--accent-soft); color: var(--accent); }
-  .pill-stacked { background: var(--amber-soft); color: var(--amber); }
-
   .chart-legend { display: flex; flex-wrap: wrap; gap: .3rem 1.1rem; margin-top: .75rem; font-size: .85rem; color: var(--ink-dim); }
   .chart-legend span { display: inline-flex; align-items: center; gap: .35rem; }
-  .chart-legend i { width: .7rem; height: .7rem; border-radius: 50%; display: inline-block; }
-  #pointsChart { overflow-x: auto; }
-  #pointsChart svg text { fill: var(--ink-dim); font-family: "Source Sans 3", sans-serif; }
+  .chart-legend i { width: .7rem; height: .7rem; border-radius: 3px; display: inline-block; }
+  .chart-legend i.legend-ready { background: var(--accent-soft); border: 1px solid var(--accent); }
+  .chart-legend i.legend-current { background: var(--surface-2); border: 1px solid var(--ink-dim); }
+
+  #matrixTable { table-layout: fixed; }
+  #matrixTable th, #matrixTable td { text-align: center; padding: .5rem .55rem; white-space: nowrap; }
+  #matrixTable th:first-child, #matrixTable td.matrix-name {
+    position: sticky; left: 0; background: var(--bg); text-align: left; z-index: 1;
+    box-shadow: 1px 0 0 var(--line);
+  }
+  #matrixTable tbody tr:hover td.matrix-name { background: var(--surface-2); }
+  .matrix-name { font-weight: 600; }
+  th.matrix-col { font-variant-numeric: tabular-nums; }
+  th.matrix-current, td.matrix-current { background: var(--surface-2); }
+  td.matrix-cell { font-variant-numeric: tabular-nums; color: var(--ink-dim); }
+  td.matrix-actual { color: var(--ink); font-weight: 600; }
+  td.matrix-empty { color: var(--line); }
+  td.matrix-ready { background: var(--accent-soft); color: var(--accent); font-weight: 700; border-radius: .35rem; }
+  .matrix-tag { font-size: .68rem; font-weight: 500; color: var(--amber); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
 
   @media (max-width: 640px) {
     .target-controls { flex-direction: column; align-items: stretch; }
@@ -203,16 +205,38 @@
 <nav class="tabs" id="tabNav">
   <button type="button" data-action="show-tab" data-tab="overview" id="tabBtnOverview"></button>
   <button type="button" data-action="show-tab" data-tab="roster" id="tabBtnRoster"></button>
-  <button type="button" data-action="show-tab" data-tab="forecast" id="tabBtnForecast"></button>
   <button type="button" data-action="show-tab" data-tab="rules" id="tabBtnRules"></button>
   <button type="button" data-action="show-tab" data-tab="data" id="tabBtnData"></button>
 </nav>
 
 <div class="tab-panel" id="tab-overview" data-tab-panel="overview">
-  <section id="overviewSection">
-    <h2 id="overviewHeading">Overview</h2>
-    <p id="overviewDesc"></p>
-    <div class="stat-grid" id="overviewStats"></div>
+  <section id="targetSection">
+    <h2 id="targetHeading">Group Choice</h2>
+    <p id="targetDesc"></p>
+    <div class="panel">
+      <div class="target-controls">
+        <label><span id="targetWmuLabel">WMU</span> <select id="targetWmu"></select></label>
+        <label><span id="targetTypeLabel">Tag type</span> <select id="targetMooseType"></select></label>
+        <label><span id="targetSeasonLabel">Season</span> <select id="targetSeason"></select></label>
+        <label><span id="targetStageLabel">Stage</span> <select id="targetStage"></select></label>
+        <label><span id="targetChoiceLabel">Choice</span> <select id="targetChoice"></select></label>
+      </div>
+      <p id="targetNoData" class="warning" hidden></p>
+    </div>
+  </section>
+
+  <section id="matrixSection">
+    <h2 id="matrixHeading">Where The Team Stands</h2>
+    <p id="matrixDesc"></p>
+    <div class="table-scroll">
+      <table id="matrixTable">
+        <thead>
+          <tr id="matrixTableHead"></tr>
+        </thead>
+        <tbody id="matrixBody"></tbody>
+      </table>
+    </div>
+    <div class="chart-legend" id="matrixLegend"></div>
   </section>
 </div>
 
@@ -230,45 +254,6 @@
     </div>
     <div class="roster-actions">
       <button type="button" class="primary" id="addHunterBtn" data-action="add-hunter"></button>
-    </div>
-  </section>
-</div>
-
-<div class="tab-panel" id="tab-forecast" data-tab-panel="forecast">
-  <section id="targetSection">
-    <h2 id="targetHeading">Group Target</h2>
-    <p id="targetDesc"></p>
-    <div class="panel">
-      <div class="target-controls">
-        <label><span id="targetWmuLabel">WMU</span> <select id="targetWmu"></select></label>
-        <label><span id="targetTypeLabel">Tag type</span> <select id="targetMooseType"></select></label>
-        <label><span id="targetSeasonLabel">Season</span> <select id="targetSeason"></select></label>
-        <label><span id="targetStageLabel">Stage</span> <select id="targetStage"></select></label>
-        <label><span id="targetChoiceLabel">Choice</span> <select id="targetChoice"></select></label>
-      </div>
-      <p id="targetNoData" class="warning" hidden></p>
-    </div>
-  </section>
-
-  <section id="forecastSection">
-    <h2 id="forecastHeading">Group Staggering Forecast</h2>
-    <p id="forecastDesc"></p>
-    <div class="table-scroll">
-      <table id="forecastTable">
-        <thead>
-          <tr><th>Year</th><th>Projected cutoff</th><th>Expected tags drawn</th><th>Status</th></tr>
-        </thead>
-        <tbody id="forecastBody"></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section id="chartSection">
-    <h2 id="chartHeading">Points Over Time</h2>
-    <p id="chartDesc"></p>
-    <div class="panel">
-      <div id="pointsChart"></div>
-      <div id="chartLegend" class="chart-legend"></div>
     </div>
   </section>
 </div>
@@ -313,38 +298,24 @@
       rulesHeading: "Key Rules",
       rosterHeading: "Roster",
       tabOverview: "Overview",
-      tabRoster: "Roster",
-      tabForecast: "Target & Forecast",
+      tabRoster: "Edit Roster",
       tabRules: "Rules",
       tabData: "Data",
-      overviewHeading: "At a Glance",
-      overviewDesc: "A quick read on where the group stands right now. Switch tabs above for the full roster, forecast, rules, or to upload/export data.",
-      overviewStatHunters: "Hunters Tracked",
-      overviewStatTarget: "Group Target",
-      overviewStatThisYear: (y) => `${y} Outlook`,
-      overviewExpected: (n) => `${n} expected tag${n === 1 ? "" : "s"} drawn this year`,
-      overviewWmuPrefix: "WMU",
-      targetNoDataShort: "No data",
       dataHeading: "Data",
       dataStatusDemo: (n) => `Showing demo data (${n} hunter${n === 1 ? "" : "s"}). Upload your group's filled-in .xlsx template to replace it.`,
       dataStatusUploaded: (n) => `Showing uploaded data for ${n} hunter${n === 1 ? "" : "s"}.`,
       dataStatusError: "Couldn't read that file. Make sure it's the roster template .xlsx with a Hunter/Year/Points row per entry.",
-      forecastHeading: "Group Staggering Forecast",
-      forecastDesc: "This projects how many hunters are likely to draw the group's target tag each year. The cutoff line is fitted to five years of real MNR draw data for whatever WMU/tag type/season you pick below, not a guessed number, and each hunter's odds ramp up rather than flip on/off at the line. Treat this as a planning signal: a gap year means the group is unlikely to have a tag holder that year; a stacked year means several hunters are likely ready at once, when the party only needs one.",
-      forecastTable: { year: "Year", cutoff: "Projected cutoff", expected: "Expected tags drawn", status: "Status" },
-      forecastStatusGap: "Gap",
-      forecastStatusOk: "Covered",
-      forecastStatusStacked: "Stacked",
-      targetHeading: "Group Target",
-      targetDesc: "What the group is chasing, and the WMU it's chasing it in. This drives the forecast and chart below, using real Ontario draw data for the combination you pick.",
+      targetHeading: "Group Choice",
+      targetDesc: "Pick the one WMU and tag type/season/stage/choice the group is chasing. Everything below — who's ready, who's building — is forecast for this one WMU at a time, using real Ontario draw data for the exact combination you pick.",
+      matrixHeading: "Where The Team Stands",
+      matrixDesc: "Each hunter's points by year. Past years show real points banked and the tag result if they won one; years beyond their latest record are projected (banked +1/year) for the WMU chosen above, and highlighted when that projection would clear the draw cutoff.",
+      matrixLegend: "<span><i class=\"legend-ready\"></i>Projected to clear the cutoff</span><span><i class=\"legend-current\"></i>Current year</span>",
       targetWmuLabel: "WMU",
       targetTypeLabel: "Tag type",
       targetSeasonLabel: "Season",
       targetStageLabel: "Stage",
       targetChoiceLabel: "Choice",
       targetNoData: "No MNR draw data was ever fully awarded for this exact combination — try a different season, stage, or choice.",
-      chartHeading: "Points Over Time",
-      chartDesc: "Each hunter's real point history, plus the same forward projection the forecast uses. The dashed line marks the current year.",
       rosterEditHint: "Points, tag, claimed, and Northern status are editable directly in the table — changes save automatically in this browser.",
       addHunterBtn: "+ Add hunter",
       addHunterPrompt: "Hunter's name:",
@@ -397,38 +368,24 @@
       rulesHeading: "Règles clés",
       rosterHeading: "Liste des chasseurs",
       tabOverview: "Aperçu",
-      tabRoster: "Liste",
-      tabForecast: "Cible et prévision",
+      tabRoster: "Modifier la liste",
       tabRules: "Règles",
       tabData: "Données",
-      overviewHeading: "En un coup d'œil",
-      overviewDesc: "Un aperçu rapide de la situation du groupe. Utilisez les onglets ci-dessus pour la liste complète, la prévision, les règles, ou pour téléverser/exporter des données.",
-      overviewStatHunters: "Chasseurs suivis",
-      overviewStatTarget: "Cible du groupe",
-      overviewStatThisYear: (y) => `Perspective ${y}`,
-      overviewExpected: (n) => `${n} contingent${n === 1 ? "" : "s"} attendu${n === 1 ? "" : "s"} cette année`,
-      overviewWmuPrefix: "ZGF",
-      targetNoDataShort: "Aucune donnée",
       dataHeading: "Données",
       dataStatusDemo: (n) => `Affichage des données de démonstration (${n} chasseur${n === 1 ? "" : "s"}). Téléversez le modèle .xlsx rempli de votre groupe pour les remplacer.`,
       dataStatusUploaded: (n) => `Affichage des données téléversées pour ${n} chasseur${n === 1 ? "" : "s"}.`,
       dataStatusError: "Impossible de lire ce fichier. Assurez-vous qu'il s'agit du modèle de liste .xlsx avec une ligne Hunter/Year/Points par entrée.",
-      forecastHeading: "Prévision d'étalement du groupe",
-      forecastDesc: "Ceci projette combien de chasseurs sont susceptibles de tirer le contingent cible du groupe chaque année. La ligne de seuil est ajustée sur cinq ans de vraies données de tirage du MRN pour la ZGF/type de contingent/saison choisis ci-dessous, pas un chiffre deviné, et les chances de chaque chasseur augmentent progressivement plutôt que de basculer d'un coup au seuil. À prendre comme signal de planification : une année \"trou\" veut dire que le groupe risque de ne pas avoir de détenteur de contingent cette année-là; une année \"empilée\" veut dire que plusieurs chasseurs sont probablement prêts en même temps, alors que le groupe n'a besoin que d'un seul contingent.",
-      forecastTable: { year: "Année", cutoff: "Seuil projeté", expected: "Contingents attendus", status: "Statut" },
-      forecastStatusGap: "Trou",
-      forecastStatusOk: "Couvert",
-      forecastStatusStacked: "Empilé",
-      targetHeading: "Cible du groupe",
-      targetDesc: "Ce que le groupe vise, et la ZGF visée. Ceci pilote la prévision et le graphique ci-dessous, à partir des vraies données de tirage de l'Ontario pour la combinaison choisie.",
+      targetHeading: "Choix du groupe",
+      targetDesc: "Choisissez la ZGF et le type de contingent/saison/étape/choix que le groupe vise. Tout ce qui suit — qui est prêt, qui est en construction — est prévu pour cette seule ZGF à la fois, à partir des vraies données de tirage de l'Ontario pour la combinaison exacte choisie.",
+      matrixHeading: "Où en est l'équipe",
+      matrixDesc: "Les points de chaque chasseur par année. Les années passées montrent les points réels et le résultat du contingent s'il en a gagné un; les années après son dernier dossier connu sont projetées (points bancarisés +1/an) pour la ZGF choisie ci-dessus, et surlignées quand cette projection franchirait le seuil de tirage.",
+      matrixLegend: "<span><i class=\"legend-ready\"></i>Projeté pour franchir le seuil</span><span><i class=\"legend-current\"></i>Année en cours</span>",
       targetWmuLabel: "ZGF",
       targetTypeLabel: "Type de contingent",
       targetSeasonLabel: "Saison",
       targetStageLabel: "Étape",
       targetChoiceLabel: "Choix",
       targetNoData: "Aucune donnée de tirage du MRN n'a jamais été pleinement attribuée pour cette combinaison exacte — essayez une autre saison, étape ou choix.",
-      chartHeading: "Évolution des points",
-      chartDesc: "L'historique réel des points de chaque chasseur, plus la même projection utilisée par la prévision. La ligne pointillée marque l'année en cours.",
       rosterEditHint: "Les points, le contingent, le statut réclamé et le statut Nord sont modifiables directement dans le tableau — les changements se sauvegardent automatiquement dans ce navigateur.",
       addHunterBtn: "+ Ajouter un chasseur",
       addHunterPrompt: "Nom du chasseur :",
@@ -1170,104 +1127,105 @@
     setGroupTarget(next);
   }
 
-  function renderForecast() {
-    const body = document.getElementById("forecastBody");
-    if (!body) return;
-    const heading = document.getElementById("forecastHeading");
-    if (heading) heading.textContent = t("forecastHeading");
-    const desc = document.getElementById("forecastDesc");
-    if (desc) desc.textContent = t("forecastDesc");
-    const headRow = document.querySelector("#forecastTable thead tr");
-    if (headRow) {
-      const cols = t("forecastTable");
-      headRow.innerHTML = `<th>${cols.year}</th><th>${cols.cutoff}</th><th>${cols.expected}</th><th>${cols.status}</th>`;
-    }
+  // ---------------------------------------------------------------------
+  // buildGroupMatrix - the main view: one row per hunter, one column per
+  // year. Past years (an actual pointsHistory entry exists) show the real
+  // points banked and, if a tag was won that year, the tag result. Years
+  // after a hunter's latest known record show a plain projected points
+  // number (banked +1/year), flagged "ready" when that projection would
+  // fully clear the chosen WMU's projected cutoff that year (probability
+  // ramp from drawProbability() reaching 1, not shown as a percentage -
+  // just a plain number and a highlight). This always forecasts for the
+  // one WMU/tag type/season/choice the group has chosen, never several
+  // WMUs superimposed.
+  // ---------------------------------------------------------------------
+  function buildGroupMatrix(roster, target, startYear, endYear) {
+    const trend = getTrendSeries(target);
+    const years = [];
+    for (let year = startYear; year <= endYear; year++) years.push(year);
+
+    const rows = (roster || []).map((hunter) => {
+      const byYear = new Map((hunter.pointsHistory || []).map((e) => [e.year, e]));
+      const last = latestEntry(hunter);
+      const cells = years.map((year) => {
+        const entry = byYear.get(year);
+        if (entry) {
+          return {
+            year,
+            kind: "actual",
+            points: entry.points,
+            tagType: entry.tagType || null,
+            claimed: !!entry.claimed
+          };
+        }
+        if (last && year > last.year) {
+          const points = projectedPoints(hunter, year, last.year);
+          let ready = false;
+          if (trend) {
+            const cutoff = projectCutoff(trend, year);
+            const eff = points + (isNorthernResident(hunter) ? NORTHERN_PREFERENCE_POINT : 0);
+            ready = drawProbability(eff, cutoff) >= 1;
+          }
+          return { year, kind: "projected", points, ready };
+        }
+        return { year, kind: "empty" };
+      });
+      return { name: hunter.name, cells };
+    });
+
+    return { years, rows };
+  }
+
+  function renderMatrix() {
+    const head = document.getElementById("matrixTableHead");
+    const body = document.getElementById("matrixBody");
+    if (!head || !body) return;
+    const heading = document.getElementById("matrixHeading");
+    if (heading) heading.textContent = t("matrixHeading");
+    const desc = document.getElementById("matrixDesc");
+    if (desc) desc.textContent = t("matrixDesc");
+
+    const currentYear = new Date().getFullYear();
+    const historyYears = activeRoster.flatMap((h) => (h.pointsHistory || []).map((e) => e.year));
+    const startYear = historyYears.length ? Math.min(currentYear, ...historyYears) : currentYear;
+    const endYear = currentYear + FORECAST_SPAN_YEARS;
+    const matrix = buildGroupMatrix(activeRoster, groupTarget, startYear, endYear);
+
+    const nameLabel = t("table").name;
+    head.innerHTML =
+      "<th>" + nameLabel + "</th>" +
+      matrix.years
+        .map((y) => '<th class="matrix-col' + (y === currentYear ? " matrix-current" : "") + '">' + y + "</th>")
+        .join("");
 
     body.innerHTML = "";
-    const trend = getTrendSeries(groupTarget);
-    if (!trend) return;
-
-    const startYear = new Date().getFullYear();
-    const endYear = startYear + FORECAST_SPAN_YEARS;
-    const staggering = computeGroupStaggering(activeRoster, startYear, endYear, trend);
-    const statusLabel = { gap: t("forecastStatusGap"), ok: t("forecastStatusOk"), stacked: t("forecastStatusStacked") };
-
-    staggering.forEach((row) => {
+    matrix.rows.forEach((row) => {
       const tr = document.createElement("tr");
-      tr.innerHTML =
-        "<td>" + row.year + "</td>" +
-        "<td>" + row.cutoff + "</td>" +
-        "<td>" + row.expected + "</td>" +
-        '<td><span class="pill pill-' + row.status + '">' + statusLabel[row.status] + "</span></td>";
+      const nameCell = document.createElement("td");
+      nameCell.className = "matrix-name";
+      nameCell.textContent = row.name;
+      tr.appendChild(nameCell);
+      row.cells.forEach((cell) => {
+        const td = document.createElement("td");
+        const classes = ["matrix-cell", "matrix-" + cell.kind];
+        if (cell.ready) classes.push("matrix-ready");
+        if (cell.year === currentYear) classes.push("matrix-current");
+        td.className = classes.join(" ");
+        if (cell.kind === "actual") {
+          const tagLabel = cell.tagType ? cell.tagType + (cell.claimed ? " ✓" : "") : "";
+          td.innerHTML = cell.points + (tagLabel ? '<div class="matrix-tag">' + tagLabel + "</div>" : "");
+        } else if (cell.kind === "projected") {
+          td.textContent = cell.points;
+        } else {
+          td.textContent = "–";
+        }
+        tr.appendChild(td);
+      });
       body.appendChild(tr);
     });
-  }
 
-  const HUNTER_COLORS = ["#2a6f97", "#bf5b04", "#2e7d32", "#8e24aa", "#c62828", "#00838f", "#6d4c41", "#616161"];
-
-  function hunterColor(index) {
-    return HUNTER_COLORS[index % HUNTER_COLORS.length];
-  }
-
-  function renderChart() {
-    const container = document.getElementById("pointsChart");
-    if (!container) return;
-    const heading = document.getElementById("chartHeading");
-    if (heading) heading.textContent = t("chartHeading");
-    const desc = document.getElementById("chartDesc");
-    if (desc) desc.textContent = t("chartDesc");
-
-    const startYear = new Date().getFullYear();
-    const endYear = startYear + FORECAST_SPAN_YEARS;
-    const series = buildPointsSeries(activeRoster, startYear, endYear);
-
-    const allYears = series.flatMap((s) => s.points.map((p) => p.year));
-    const allPoints = series.flatMap((s) => s.points.map((p) => p.points));
-    const minYear = allYears.length ? Math.min(...allYears) : startYear;
-    const maxYear = allYears.length ? Math.max(...allYears) : endYear;
-    const maxPoints = Math.max(1, ...allPoints);
-
-    const padL = 34, padR = 10, padT = 10, padB = 24;
-    const yearSpan = Math.max(1, maxYear - minYear);
-    const plotW = Math.max(400, yearSpan * 40);
-    const plotH = 220;
-    const W = plotW + padL + padR;
-    const H = plotH + padT + padB;
-    const xScale = (year) => padL + ((year - minYear) / yearSpan) * plotW;
-    const yScale = (pts) => padT + plotH - (pts / maxPoints) * plotH;
-
-    let grid = "";
-    [0, Math.round(maxPoints / 2), maxPoints].forEach((v) => {
-      const y = yScale(v).toFixed(1);
-      grid += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="currentColor" stroke-opacity="0.15" />`;
-      grid += `<text x="${padL - 6}" y="${Number(y) + 3}" text-anchor="end" font-size="10">${v}</text>`;
-    });
-    let xLabels = "";
-    for (let y = minYear; y <= maxYear; y++) {
-      xLabels += `<text x="${xScale(y).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="10">${y}</text>`;
-    }
-    const curX = xScale(startYear).toFixed(1);
-    const curLine = `<line x1="${curX}" y1="${padT}" x2="${curX}" y2="${H - padB}" stroke="currentColor" stroke-opacity="0.35" stroke-dasharray="3,3" />`;
-
-    let paths = "";
-    series.forEach((s, i) => {
-      if (!s.points.length) return;
-      const color = hunterColor(i);
-      const d = s.points.map((p, j) => (j === 0 ? "M" : "L") + xScale(p.year).toFixed(1) + " " + yScale(p.points).toFixed(1)).join(" ");
-      paths += `<path d="${d}" fill="none" stroke="${color}" stroke-width="2" />`;
-      s.points.forEach((p) => {
-        paths += `<circle cx="${xScale(p.year).toFixed(1)}" cy="${yScale(p.points).toFixed(1)}" r="2.5" fill="${color}"><title>${s.name} — ${p.year}: ${p.points}</title></circle>`;
-      });
-    });
-
-    container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${grid}${curLine}${paths}${xLabels}</svg>`;
-
-    const legend = document.getElementById("chartLegend");
-    if (legend) {
-      legend.innerHTML = series
-        .map((s, i) => `<span><i style="background:${hunterColor(i)}"></i>${s.name}</span>`)
-        .join("");
-    }
+    const legend = document.getElementById("matrixLegend");
+    if (legend) legend.innerHTML = t("matrixLegend");
   }
 
   function renderDataStatus() {
@@ -1286,7 +1244,7 @@
   // it into tabs groups related tools together and gives a first, glanceable
   // "Overview" screen instead of making the reader scroll past everything.
   // ---------------------------------------------------------------------
-  const TAB_IDS = ["overview", "roster", "forecast", "rules", "data"];
+  const TAB_IDS = ["overview", "roster", "rules", "data"];
   let activeTab = "overview";
 
   function showTab(name) {
@@ -1309,49 +1267,14 @@
     });
   }
 
-  function renderOverview() {
-    const heading = document.getElementById("overviewHeading");
-    if (heading) heading.textContent = t("overviewHeading");
-    const desc = document.getElementById("overviewDesc");
-    if (desc) desc.textContent = t("overviewDesc");
-
-    const grid = document.getElementById("overviewStats");
-    if (!grid) return;
-
-    const hunterCount = activeRoster.length;
-    const target = groupTarget;
-    const targetLabel = [target.mooseType, target.season, target.stage].filter(Boolean).join(" · ");
-    const trend = getTrendSeries(target);
-
-    const thisYear = new Date().getFullYear();
-    let statusPill = "";
-    let statusSub = "";
-    if (trend) {
-      const [row] = computeGroupStaggering(activeRoster, thisYear, thisYear, trend);
-      statusPill = '<span class="pill pill-' + row.status + '">' + t("forecastStatus" + row.status.charAt(0).toUpperCase() + row.status.slice(1)) + "</span>";
-      statusSub = t("overviewExpected", row.expected);
-    } else {
-      statusPill = '<span class="pill pill-gap">' + t("targetNoDataShort") + "</span>";
-    }
-
-    grid.innerHTML =
-      '<div class="stat-card"><div class="stat-label">' + t("overviewStatHunters") + '</div><div class="stat-value">' + hunterCount + "</div><div class=\"stat-sub\">" +
-      (activeRosterIsUploaded ? t("dataStatusUploaded", hunterCount) : t("dataStatusDemo", hunterCount)) +
-      '</div></div>' +
-      '<div class="stat-card"><div class="stat-label">' + t("overviewStatTarget") + '</div><div class="stat-value">' + t("overviewWmuPrefix") + " " + target.wmu + '</div><div class="stat-sub">' + targetLabel + "</div></div>" +
-      '<div class="stat-card"><div class="stat-label">' + t("overviewStatThisYear", thisYear) + '</div><div class="stat-value">' + statusPill + '</div><div class="stat-sub">' + statusSub + "</div></div>";
-  }
-
   function render() {
     renderStaticText();
     renderBanner();
     renderRules();
     renderRoster();
     renderTargetSelector();
-    renderChart();
-    renderForecast();
+    renderMatrix();
     renderDataStatus();
-    renderOverview();
     renderTabs();
     const toggle = document.getElementById("langToggle");
     if (toggle) toggle.textContent = currentLang === "en" ? "FR" : "EN";
@@ -1484,6 +1407,8 @@
       drawProbability,
       buildHunterForecast,
       computeGroupStaggering,
+      buildGroupMatrix,
+      renderMatrix,
       updateEntryField,
       addYearForHunter,
       deleteEntry,

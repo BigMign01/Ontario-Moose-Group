@@ -1,7 +1,7 @@
-// test5.js - tab navigation and the Overview "at a glance" panel added to make the
-// tool easier to use: related tools are grouped into tabs instead of one long scroll,
-// and Overview gives a glanceable summary (hunter count, group target, this year's
-// outlook) instead of making the reader read every section to find the same info.
+// test5.js - tab navigation added to make the tool easier to use: related tools are
+// grouped into tabs (Overview / Roster / Rules / Data) instead of one long scroll.
+// The Overview tab holds the Group Choice (WMU/tag type/season/stage/choice) and the
+// team matrix - the two things the group actually opens the tool to see.
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
@@ -22,11 +22,13 @@ function check(name, fn) {
   console.log("ok - " + name);
 }
 
+const TAB_IDS = ["overview", "roster", "rules", "data"];
+
 check("the app opens on the overview tab by default, with only that panel active", () => {
   const dom = freshApp();
   assert.strictEqual(dom.window.APP.getActiveTab(), "overview");
   const doc = dom.window.document;
-  ["overview", "roster", "forecast", "rules", "data"].forEach((id) => {
+  TAB_IDS.forEach((id) => {
     const panel = doc.getElementById("tab-" + id);
     assert.strictEqual(panel.classList.contains("active"), id === "overview", `tab-${id} active state`);
   });
@@ -52,26 +54,27 @@ check("showTab ignores unknown tab names instead of leaving the UI in a broken s
 check("clicking a tab nav button (delegated click) switches tabs, not just the direct API", () => {
   const dom = freshApp();
   const doc = dom.window.document;
-  const forecastBtn = doc.getElementById("tabBtnForecast");
-  forecastBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
-  assert.strictEqual(dom.window.APP.getActiveTab(), "forecast");
-  assert.ok(doc.getElementById("tab-forecast").classList.contains("active"));
+  const dataBtn = doc.getElementById("tabBtnData");
+  dataBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  assert.strictEqual(dom.window.APP.getActiveTab(), "data");
+  assert.ok(doc.getElementById("tab-data").classList.contains("active"));
 });
 
-check("the overview panel shows hunter count, group target, and this year's forecast status for demo data", () => {
+check("the overview tab holds both the Group Choice controls and the team matrix, wired to the same target", () => {
   const dom = freshApp();
   const doc = dom.window.document;
-  const statsHtml = doc.getElementById("overviewStats").innerHTML;
-  assert.ok(statsHtml.includes(">3<"), "demo HUNTER_SEED has 3 hunters");
-  assert.ok(statsHtml.includes("WMU 24"), "default group target is WMU 24");
-  assert.ok(/pill pill-(gap|ok|stacked)/.test(statsHtml), "this year's status should render as a colored pill");
+  const overviewPanel = doc.getElementById("tab-overview");
+  assert.ok(overviewPanel.querySelector("#targetSection"), "Group Choice lives in the overview tab");
+  assert.ok(overviewPanel.querySelector("#matrixSection"), "the team matrix lives in the overview tab");
+  assert.strictEqual(doc.getElementById("targetWmu").value, dom.window.APP.getGroupTarget().wmu);
 });
 
-check("switching the group target updates the overview's target stat without a full page reload", () => {
+check("switching the group target re-renders the matrix for the new WMU (one WMU at a time, never several)", () => {
   const dom = freshApp();
   dom.window.APP.setGroupTarget({ wmu: "28" });
-  const statsHtml = dom.window.document.getElementById("overviewStats").innerHTML;
-  assert.ok(statsHtml.includes("WMU 28"));
+  assert.strictEqual(dom.window.document.getElementById("targetWmu").value, "28");
+  // the matrix table still renders (doesn't break) for a different single WMU
+  assert.ok(dom.window.document.querySelectorAll("#matrixBody tr").length > 0);
   dom.window.APP.setGroupTarget({ wmu: "24" }); // restore default
 });
 
