@@ -262,6 +262,83 @@ check("buildGroupMatrix highlights 'ready' using the real WMU24 bull trend once 
   assert.strictEqual(typeof cells[2].ready, "boolean");
 });
 
+check("buildGroupMatrix resets a hunter's simulated points to 0 the year after they clear the cutoff (simulated tag year)", () => {
+  // Uses the real WMU24 bull/gun trend (fitted cutoff sequence from
+  // earlier tests: 2026≈12.6, 2027≈13, 2028≈13.4, 2029≈13.8) so the math
+  // is checked against genuine MOOSE_TRENDS data, not a synthetic stub.
+  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
+  // Fitted cutoff sequence (from earlier tests): 2026≈12.6, 2027≈13,
+  // 2028≈13.4, 2029≈13.8. Start a hunter at 11 banked points (2026).
+  const nearHunter = { name: "Solo", pointsHistory: [{ year: 2026, points: 11, tagType: null, claimed: false, northernResident: false }] };
+  const matrix = APP.buildGroupMatrix([nearHunter], target, 2026, 2032);
+  const cells = matrix.rows[0].cells;
+  // find the first cell that clears the cutoff (sequenceTag true)
+  const tagIdx = cells.findIndex((c) => c.sequenceTag);
+  assert.ok(tagIdx > 0, "the hunter should eventually clear the cutoff and get a simulated tag");
+  assert.strictEqual(cells[tagIdx].ready, true);
+  const nextCell = cells[tagIdx + 1];
+  assert.ok(nextCell, "there should be a year after the tag year in this window");
+  assert.strictEqual(nextCell.points, 1, "points restart from 0+1 the year after a simulated tag");
+  assert.strictEqual(nextCell.sequenceTag, false, "the restart year is not itself a tag year");
+});
+
+check("buildGroupMatrix picks only one hunter as that year's tag holder when several would clear the cutoff, and clearly marks it", () => {
+  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
+  // Both hunters already at/above the 2026 fitted cutoff (~12.6), so both
+  // are "ready" the very first projected year - a guaranteed collision.
+  const hunterA = { name: "Ahigh", pointsHistory: [{ year: 2026, points: 20, tagType: null, claimed: false, northernResident: false }] };
+  const hunterB = { name: "Blow", pointsHistory: [{ year: 2026, points: 15, tagType: null, claimed: false, northernResident: false }] };
+  const matrix = APP.buildGroupMatrix([hunterA, hunterB], target, 2026, 2027);
+  const rowA = matrix.rows.find((r) => r.name === "Ahigh");
+  const rowB = matrix.rows.find((r) => r.name === "Blow");
+  // 2027 is the first projected year for both (2026 is their actual entry)
+  const cellA = rowA.cells.find((c) => c.year === 2027);
+  const cellB = rowB.cells.find((c) => c.year === 2027);
+  assert.strictEqual(cellA.ready, true);
+  assert.strictEqual(cellB.ready, true);
+  // both clear the cutoff, but only the higher-points hunter (Ahigh) is
+  // picked as this year's tag holder
+  assert.strictEqual(cellA.sequenceTag, true, "the hunter with more points wins the tie-break");
+  assert.strictEqual(cellB.sequenceTag, false, "the other ready hunter is not reset, even though they also cleared the cutoff");
+});
+
+check("sortMatrixRows sorts by hunter name and by any year column, ascending and descending", () => {
+  const matrix = {
+    years: [2026, 2027],
+    rows: [
+      { name: "Zed", cells: [{ year: 2026, kind: "actual", points: 3 }, { year: 2027, kind: "projected", points: 9 }] },
+      { name: "Amy", cells: [{ year: 2026, kind: "actual", points: 8 }, { year: 2027, kind: "empty" }] }
+    ]
+  };
+  const byNameAsc = APP.sortMatrixRows(matrix, "name", "asc");
+  assert.deepStrictEqual(byNameAsc.rows.map((r) => r.name), ["Amy", "Zed"]);
+
+  const byNameDesc = APP.sortMatrixRows(matrix, "name", "desc");
+  assert.deepStrictEqual(byNameDesc.rows.map((r) => r.name), ["Zed", "Amy"]);
+
+  const by2026Desc = APP.sortMatrixRows(matrix, 2026, "desc");
+  assert.deepStrictEqual(by2026Desc.rows.map((r) => r.name), ["Amy", "Zed"], "Amy has 8 points in 2026, higher than Zed's 3");
+
+  const by2027Asc = APP.sortMatrixRows(matrix, 2027, "asc");
+  assert.deepStrictEqual(by2027Asc.rows.map((r) => r.name), ["Amy", "Zed"], "Amy's empty 2027 cell sorts before Zed's 9");
+});
+
+check("sortMatrixBy toggles direction on repeated clicks of the same column and re-renders", () => {
+  const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/" });
+  const appDom = dom.window.APP;
+  appDom.loadRoster([
+    { name: "Zed", pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false, northernResident: false }] },
+    { name: "Amy", pointsHistory: [{ year: 2026, points: 8, tagType: null, claimed: false, northernResident: false }] }
+  ]);
+  assert.strictEqual(appDom.getMatrixSort().key, "name");
+  assert.strictEqual(appDom.getMatrixSort().direction, "asc");
+  appDom.sortMatrixBy("name");
+  assert.strictEqual(appDom.getMatrixSort().direction, "desc", "clicking the already-active column flips direction");
+  const doc = dom.window.document;
+  const firstRowName = doc.querySelector("#matrixBody tr td.matrix-name").textContent;
+  assert.strictEqual(firstRowName, "Zed", "descending name sort should put Zed first");
+});
+
 check("renderMatrix populates the matrix table with one row per hunter and one column per year, once a roster is loaded", () => {
   const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/" });
   dom.window.APP.loadRoster(JSON.parse(JSON.stringify(dom.window.APP.HUNTER_SEED)));
