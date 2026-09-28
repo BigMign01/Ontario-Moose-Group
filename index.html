@@ -644,6 +644,21 @@
     return entry ? entry.points : 0;
   }
 
+  // pointsGoingForward - a hunter's real starting point for anything
+  // projected beyond their latest recorded row. Matches the same
+  // convention the roster template itself uses (a claimed tag's points
+  // value is the balance THAT year, and the reset shows up as 0 in the
+  // hunter's own next row): if the latest row already claimed a tag, the
+  // points going into the next year are 0, not that row's own points
+  // value - a claimed tag resets points the year after, whether that
+  // reset was typed into the spreadsheet or has to be inferred because
+  // the spreadsheet's history simply ends there.
+  function pointsGoingForward(hunter) {
+    const entry = latestEntry(hunter);
+    if (!entry) return 0;
+    return entry.claimed ? 0 : entry.points;
+  }
+
   function isNorthernResident(hunter) {
     const entry = latestEntry(hunter);
     return !!(entry && entry.northernResident);
@@ -1486,7 +1501,7 @@
     const actualByHunter = new Map(
       hunters.map((h) => [h.name, new Map((h.pointsHistory || []).map((e) => [e.year, e]))])
     );
-    const simPoints = new Map(hunters.map((h) => [h.name, bankedPoints(h)]));
+    const simPoints = new Map(hunters.map((h) => [h.name, pointsGoingForward(h)]));
     const lastKnownYear = new Map(hunters.map((h) => [h.name, latestEntry(h) ? latestEntry(h).year : null]));
     const cellsByHunter = new Map(hunters.map((h) => [h.name, new Map()]));
 
@@ -1847,6 +1862,7 @@
       hunterCombinedProbability,
       groupProbability,
       buildGroupProbabilityTable,
+      pointsGoingForward,
       buildGroupMatrix,
       sortMatrixRows,
       combinedProbabilityForPoints,

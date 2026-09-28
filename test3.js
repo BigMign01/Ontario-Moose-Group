@@ -262,6 +262,34 @@ check("buildGroupMatrix highlights 'ready' using the real WMU24 bull trend once 
   assert.strictEqual(typeof cells[2].ready, "boolean");
 });
 
+check("pointsGoingForward treats a claimed tag on the latest row as a reset, even with no later row recording it", () => {
+  const claimed = { name: "Alex", pointsHistory: [{ year: 2026, points: 9, tagType: "Cow/calf", claimed: true, northernResident: false }] };
+  assert.strictEqual(APP.pointsGoingForward(claimed), 0, "a claimed tag resets points going into the next year");
+
+  const unclaimed = { name: "Building", pointsHistory: [{ year: 2026, points: 9, tagType: null, claimed: false, northernResident: false }] };
+  assert.strictEqual(APP.pointsGoingForward(unclaimed), 9, "no tag claimed - points carry forward as-is");
+
+  const noHistory = { name: "Blank", pointsHistory: [] };
+  assert.strictEqual(APP.pointsGoingForward(noHistory), 0);
+});
+
+check("buildGroupMatrix continues the simulation from 0 the year after a REAL claimed tag (not the raw recorded points)", () => {
+  // Exactly Alex's real shape: last actual row is 2026, points=9, but
+  // already claimed a Cow/calf tag that year. 2027's simulated points
+  // must start from 0+1=1, not 9+1=10.
+  const alex = { name: "Alex", pointsHistory: [{ year: 2026, points: 9, tagType: "Cow/calf", claimed: true, northernResident: false }] };
+  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
+  const matrix = APP.buildGroupMatrix([alex], target, 2026, 2029);
+  const cells = matrix.rows[0].cells;
+  assert.strictEqual(cells[0].kind, "actual");
+  assert.strictEqual(cells[0].points, 9);
+  assert.strictEqual(cells[0].tagType, "Cow/calf");
+  assert.strictEqual(cells[1].kind, "projected");
+  assert.strictEqual(cells[1].points, 1, "2027 restarts from 0, not from the claimed year's 9");
+  assert.strictEqual(cells[2].points, 2);
+  assert.strictEqual(cells[3].points, 3);
+});
+
 check("buildGroupMatrix resets a hunter's simulated points to 0 the year after they clear the cutoff (simulated tag year)", () => {
   // Uses the real WMU24 bull/gun trend (fitted cutoff sequence from
   // earlier tests: 2026≈12.6, 2027≈13, 2028≈13.4, 2029≈13.8) so the math
