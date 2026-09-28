@@ -26,9 +26,10 @@ check("rosterToRows is the inverse of parseRosterRows (round-trips through both)
   const roster = [
     {
       name: "Zed",
+      northernResident: true,
       pointsHistory: [
-        { year: 2025, points: 4, tagType: null, claimed: false, wmu: "24", season: "Gun", mooseType: "Bull", northernResident: true },
-        { year: 2026, points: 0, tagType: "Bull", claimed: true, wmu: "24", season: "Gun", mooseType: "Bull", northernResident: true }
+        { year: 2025, points: 4, tagType: null, claimed: false, wmu: "24", season: "Gun", mooseType: "Bull" },
+        { year: 2026, points: 0, tagType: "Bull", claimed: true, wmu: "24", season: "Gun", mooseType: "Bull" }
       ]
     }
   ];
@@ -37,14 +38,16 @@ check("rosterToRows is the inverse of parseRosterRows (round-trips through both)
   assert.strictEqual(rows[1].Hunter, "Zed");
   assert.strictEqual(rows[1].Claimed, "Y");
   assert.strictEqual(rows[1].NorthernResident, "Y");
+  assert.strictEqual(rows[0].NorthernResident, "Y", "the hunter-level flag is written on every row");
   assert.strictEqual(rows[0].Claimed, "N");
 
   const roundTripped = APP.parseRosterRows(rows);
   assert.strictEqual(roundTripped.length, 1);
   assert.strictEqual(roundTripped[0].name, "Zed");
-  const expected = [[2025, 4, false, true], [2026, 0, true, true]];
+  assert.strictEqual(roundTripped[0].northernResident, true);
+  const expected = [[2025, 4, false], [2026, 0, true]];
   roundTripped[0].pointsHistory.forEach((e, i) => {
-    assert.deepStrictEqual([e.year, e.points, e.claimed, e.northernResident], expected[i]);
+    assert.deepStrictEqual([e.year, e.points, e.claimed], expected[i]);
   });
 });
 
@@ -63,20 +66,31 @@ check("buildPointsSeries returns real history up to the current year plus a forw
 check("updateEntryField edits a hunter's entry in place and re-sorts by year", () => {
   const dom = freshApp();
   const APP = dom.window.APP;
-  APP.loadRoster([{ name: "Edit Me", pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false, northernResident: false }] }]);
+  APP.loadRoster([{ name: "Edit Me", pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false }] }]);
   APP.updateEntryField("Edit Me", 0, "points", "7");
   const hunter = APP.getActiveRoster().find((h) => h.name === "Edit Me");
   assert.strictEqual(hunter.pointsHistory[0].points, 7);
   APP.updateEntryField("Edit Me", 0, "claimed", true);
   assert.strictEqual(hunter.pointsHistory[0].claimed, true);
-  APP.updateEntryField("Edit Me", 0, "northernResident", true);
-  assert.strictEqual(hunter.pointsHistory[0].northernResident, true);
+});
+
+check("updateEntryField sets northernResident on the hunter itself, not on a single row, and doesn't reset when a year is added", () => {
+  const dom = freshApp();
+  const APP = dom.window.APP;
+  APP.loadRoster([{ name: "Northerner", pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false }] }]);
+  APP.updateEntryField("Northerner", 0, "northernResident", true);
+  let hunter = APP.getActiveRoster().find((h) => h.name === "Northerner");
+  assert.strictEqual(hunter.northernResident, true);
+  APP.addYearForHunter("Northerner");
+  hunter = APP.getActiveRoster().find((h) => h.name === "Northerner");
+  assert.strictEqual(hunter.northernResident, true, "adding a new year must not silently clear the flag");
+  assert.strictEqual(hunter.pointsHistory.length, 2);
 });
 
 check("addYearForHunter appends a new blank entry the year after the hunter's latest", () => {
   const dom = freshApp();
   const APP = dom.window.APP;
-  APP.loadRoster([{ name: "Grower", pointsHistory: [{ year: 2026, points: 5, tagType: null, claimed: false, northernResident: false }] }]);
+  APP.loadRoster([{ name: "Grower", pointsHistory: [{ year: 2026, points: 5, tagType: null, claimed: false }] }]);
   APP.addYearForHunter("Grower");
   const hunter = APP.getActiveRoster().find((h) => h.name === "Grower");
   assert.strictEqual(hunter.pointsHistory.length, 2);
@@ -89,8 +103,8 @@ check("deleteEntry removes just the targeted entry", () => {
   const APP = dom.window.APP;
   APP.loadRoster([
     { name: "Trim Me", pointsHistory: [
-      { year: 2025, points: 1, tagType: null, claimed: false, northernResident: false },
-      { year: 2026, points: 2, tagType: null, claimed: false, northernResident: false }
+      { year: 2025, points: 1, tagType: null, claimed: false },
+      { year: 2026, points: 2, tagType: null, claimed: false }
     ] }
   ]);
   APP.deleteEntry("Trim Me", 0);
@@ -136,6 +150,16 @@ check("an uploaded/edited roster persists to localStorage as valid, round-trippa
     primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null],
     secondChance: [null, null, null]
   });
+  assert.deepStrictEqual(saved.altGroupChoice, { primary: [null, null, null], secondChance: [null, null, null] }, "the alt choice persists too, blank by default");
+});
+
+check("the alt Group Choice persists to localStorage independently and restores on reload", () => {
+  const dom1 = freshApp();
+  dom1.window.APP.loadRoster([{ name: "A", pointsHistory: [{ year: 2026, points: 5, tagType: null, claimed: false }] }]);
+  dom1.window.APP.setChoiceSlot("primary", 0, "wmu", "28", "alt");
+  const saved = JSON.parse(dom1.window.localStorage.getItem("mooseTrackerState_v1"));
+  assert.strictEqual(saved.altGroupChoice.primary[0].wmu, "28");
+  assert.strictEqual(saved.groupChoice.primary[0].wmu, "24", "the primary choice in storage is untouched");
 });
 
 check("a roster saved in localStorage is restored automatically when the app loads again (simulated reload)", () => {

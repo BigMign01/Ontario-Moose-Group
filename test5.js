@@ -22,7 +22,7 @@ function check(name, fn) {
   console.log("ok - " + name);
 }
 
-const TAB_IDS = ["overview", "roster", "rules", "data"];
+const TAB_IDS = ["overview", "alt", "roster", "rules", "data"];
 
 check("the app opens on the overview tab by default, with only that panel active", () => {
   const dom = freshApp();
@@ -88,6 +88,51 @@ check("setLang re-renders tab labels in the chosen language", () => {
   assert.strictEqual(doc.getElementById("tabBtnOverview").textContent, dom.window.APP.I18N.fr.tabOverview);
   assert.strictEqual(doc.getElementById("tabBtnRoster").textContent, dom.window.APP.I18N.fr.tabRoster);
   dom.window.APP.setLang("en");
+});
+
+check("the Alternative Application tab is a separate Group Choice + probability + matrix, independent of the Overview one", () => {
+  const dom = freshApp();
+  const doc = dom.window.document;
+  const altPanel = doc.getElementById("tab-alt");
+  assert.ok(altPanel.querySelector("#altTargetSection"), "Group Choice lives in the alt tab");
+  assert.ok(altPanel.querySelector("#altProbabilitySection"), "group probability lives in the alt tab");
+  assert.ok(altPanel.querySelector("#altMatrixSection"), "the team matrix lives in the alt tab");
+
+  // Starts blank (not a copy of the default Overview choice), so it's
+  // obviously a scenario to configure rather than already "the plan".
+  assert.deepStrictEqual(dom.window.APP.getAltGroupChoice(), dom.window.APP.BLANK_GROUP_CHOICE);
+
+  dom.window.APP.setChoiceSlot("primary", 0, "wmu", "28", "alt");
+  assert.strictEqual(dom.window.APP.getAltGroupChoice().primary[0].wmu, "28", "alt choice updates independently");
+  assert.strictEqual(
+    dom.window.APP.getGroupChoice().primary[0].wmu,
+    "24",
+    "editing the alt choice must never touch the primary Overview choice"
+  );
+
+  const altWmuSelect = doc.querySelector('#altChoiceBody select[data-field="wmu"]');
+  assert.strictEqual(altWmuSelect.value, "28");
+  const overviewWmuSelect = doc.querySelector('#choiceBody select[data-field="wmu"]');
+  assert.strictEqual(overviewWmuSelect.value, "24", "the overview table must still show the unrelated primary choice");
+});
+
+check("clicking a tab nav button switches to the Alternative Application tab", () => {
+  const dom = freshApp();
+  const doc = dom.window.document;
+  doc.getElementById("tabBtnAlt").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  assert.strictEqual(dom.window.APP.getActiveTab(), "alt");
+  assert.ok(doc.getElementById("tab-alt").classList.contains("active"));
+});
+
+check("sorting the alt matrix by a year column does not affect the overview matrix's sort state", () => {
+  const dom = freshApp();
+  dom.window.APP.loadRoster([
+    { name: "Zed", pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false }] },
+    { name: "Amy", pointsHistory: [{ year: 2026, points: 8, tagType: null, claimed: false }] }
+  ]);
+  dom.window.APP.sortMatrixBy(2026, "alt");
+  assert.strictEqual(dom.window.APP.getAltMatrixSort().key, 2026);
+  assert.strictEqual(dom.window.APP.getMatrixSort().key, "name", "the overview matrix's own sort must be untouched");
 });
 
 console.log(`\n${passed} passed (test5.js)`);

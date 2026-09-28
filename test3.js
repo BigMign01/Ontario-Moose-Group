@@ -95,7 +95,7 @@ check("buildHunterForecast projects a hunter's points forward and ramps probabil
 });
 
 check("buildHunterForecast adds the Northern bonus to probability only, not to projected points", () => {
-  const hunter = { name: "North", pointsHistory: [{ year: 2026, points: 9, tagType: null, claimed: false, northernResident: true }] };
+  const hunter = { name: "North", northernResident: true, pointsHistory: [{ year: 2026, points: 9, tagType: null, claimed: false }] };
   const trend = [{ year: 2026, cutoff: 10 }];
   const forecast = APP.buildHunterForecast(hunter, 2026, 2026, trend);
   assert.strictEqual(forecast[0].points, 9, "raw projected points exclude the bonus");

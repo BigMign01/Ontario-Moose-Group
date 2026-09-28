@@ -88,8 +88,8 @@ check("Alex's 2026 entry reflects the claimed Cow/calf tag with points reset to 
 
 check("computeTimeline applies NORTHERN_PREFERENCE_POINT to MPR only for northernResident hunters, not to banked points", () => {
   const hunters = [
-    { name: "A", pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false, northernResident: true }] },
-    { name: "B", pointsHistory: [{ year: 2026, points: 5, tagType: null, claimed: false, northernResident: false }] }
+    { name: "A", northernResident: true, pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false }] },
+    { name: "B", northernResident: false, pointsHistory: [{ year: 2026, points: 5, tagType: null, claimed: false }] }
   ];
   const timeline = APP.computeTimeline(hunters);
   const a = timeline.find((h) => h.name === "A");
@@ -104,16 +104,16 @@ check("computeTimeline applies NORTHERN_PREFERENCE_POINT to MPR only for norther
 check("computeTimeline gives no Northern bonus when northernResident is absent or false for everyone", () => {
   const hunters = [
     { name: "A", pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false }] },
-    { name: "B", pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false, northernResident: false }] }
+    { name: "B", northernResident: false, pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false }] }
   ];
   const timeline = APP.computeTimeline(hunters);
   timeline.forEach((h) => assert.strictEqual(h.mpr, h.banked));
 });
 
-check("parseRosterRows groups flat spreadsheet rows into HUNTER_SEED-shaped roster, including NorthernResident", () => {
+check("parseRosterRows treats NorthernResident as a per-hunter attribute: any Y row marks the whole hunter, it doesn't reset on later rows", () => {
   const rows = [
     { Hunter: "Zed", Year: 2025, Points: 4, TagType: null, Claimed: null, WMU: "24", Season: "Gun", MooseType: null, NorthernResident: "Y" },
-    { Hunter: "Zed", Year: 2026, Points: 5, TagType: null, Claimed: "N", WMU: "24", Season: "Gun", MooseType: null, NorthernResident: "Y" },
+    { Hunter: "Zed", Year: 2026, Points: 5, TagType: null, Claimed: "N", WMU: "24", Season: "Gun", MooseType: null, NorthernResident: "N" },
     { Hunter: "Amy", Year: 2026, Points: 0, TagType: "Bull", Claimed: "Y", WMU: "28", Season: "Bow", MooseType: "Bull", NorthernResident: "N" },
     { Hunter: "", Year: 2026, Points: 1 } // blank hunter name should be skipped
   ];
@@ -126,11 +126,11 @@ check("parseRosterRows groups flat spreadsheet rows into HUNTER_SEED-shaped rost
   assert.strictEqual(zed.pointsHistory[0].year, 2025, "rows are sorted by year within a hunter");
   assert.strictEqual(zed.pointsHistory[1].points, 5);
   assert.strictEqual(zed.pointsHistory[1].claimed, false);
-  assert.strictEqual(zed.pointsHistory[1].northernResident, true);
+  assert.strictEqual(zed.northernResident, true, "the 2025 row's Y must still mark Zed, even though 2026 says N");
   const amy = roster.find((h) => h.name === "Amy");
   assert.strictEqual(amy.pointsHistory[0].tagType, "Bull");
   assert.strictEqual(amy.pointsHistory[0].claimed, true);
-  assert.strictEqual(amy.pointsHistory[0].northernResident, false);
+  assert.strictEqual(amy.northernResident, false);
 });
 
 check("renderRules renders a card in the DOM for ruleAllocation2027", () => {

@@ -166,13 +166,13 @@
   .chart-legend i.legend-ready { background: var(--accent-soft); border: 1px solid var(--accent); }
   .chart-legend i.legend-current { background: var(--surface-2); border: 1px solid var(--ink-dim); }
 
-  #matrixTable { table-layout: fixed; }
-  #matrixTable th, #matrixTable td { text-align: center; padding: .5rem .55rem; white-space: nowrap; }
-  #matrixTable th:first-child, #matrixTable td.matrix-name {
+  table[id$="atrixTable"] { table-layout: fixed; }
+  table[id$="atrixTable"] th, table[id$="atrixTable"] td { text-align: center; padding: .5rem .55rem; white-space: nowrap; }
+  table[id$="atrixTable"] th:first-child, table[id$="atrixTable"] td.matrix-name {
     position: sticky; left: 0; background: var(--bg); text-align: left; z-index: 1;
     box-shadow: 1px 0 0 var(--line);
   }
-  #matrixTable tbody tr:hover td.matrix-name { background: var(--surface-2); }
+  table[id$="atrixTable"] tbody tr:hover td.matrix-name { background: var(--surface-2); }
   .matrix-name { font-weight: 600; }
   th.matrix-col { font-variant-numeric: tabular-nums; }
   th.matrix-current, td.matrix-current { background: var(--surface-2); }
@@ -197,20 +197,25 @@
     padding: 1.4rem; text-align: center; font-size: .92rem; margin-top: .75rem;
   }
 
-  #choiceTable th, #choiceTable td { text-align: left; }
-  #choiceTable .choice-label { font-weight: 600; white-space: nowrap; }
-  #choiceTable .choice-section-row td {
+  .tab-intro {
+    background: var(--surface); border-left: 3px solid var(--accent); border-radius: 0 var(--radius) var(--radius) 0;
+    padding: .85rem 1.1rem; font-size: .92rem; margin-bottom: 1.2rem;
+  }
+
+  table[id$="hoiceTable"] th, table[id$="hoiceTable"] td { text-align: left; }
+  table[id$="hoiceTable"] .choice-label { font-weight: 600; white-space: nowrap; }
+  table[id$="hoiceTable"] .choice-section-row td {
     font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-dim);
     font-weight: 700; border-bottom: none; padding-top: 1rem;
   }
-  #choiceTable select {
+  table[id$="hoiceTable"] select {
     background: var(--surface); border: 1px solid var(--line); color: var(--ink);
     border-radius: .45rem; padding: .35rem .5rem; font: inherit; font-size: .9rem; min-width: 6rem;
   }
   .choice-nodata { font-size: .78rem; color: var(--red); }
 
-  #probabilityTable td, #probabilityTable th { text-align: center; }
-  #probabilityTable td:first-child, #probabilityTable th:first-child { text-align: left; }
+  table[id$="robabilityTable"] td, table[id$="robabilityTable"] th { text-align: center; }
+  table[id$="robabilityTable"] td:first-child, table[id$="robabilityTable"] th:first-child { text-align: left; }
   .prob-cell { font-variant-numeric: tabular-nums; font-weight: 700; }
   .prob-high { color: var(--accent); }
   .prob-mid { color: var(--amber); }
@@ -238,6 +243,7 @@
 
 <nav class="tabs" id="tabNav">
   <button type="button" data-action="show-tab" data-tab="overview" id="tabBtnOverview"></button>
+  <button type="button" data-action="show-tab" data-tab="alt" id="tabBtnAlt"></button>
   <button type="button" data-action="show-tab" data-tab="roster" id="tabBtnRoster"></button>
   <button type="button" data-action="show-tab" data-tab="rules" id="tabBtnRules"></button>
   <button type="button" data-action="show-tab" data-tab="data" id="tabBtnData"></button>
@@ -285,6 +291,52 @@
       </table>
     </div>
     <div class="chart-legend" id="matrixLegend"></div>
+  </section>
+</div>
+
+<div class="tab-panel" id="tab-alt" data-tab-panel="alt">
+  <p id="altIntro" class="tab-intro"></p>
+  <section id="altTargetSection">
+    <h2 id="altTargetHeading">Group Choice</h2>
+    <p id="altTargetDesc"></p>
+    <div class="panel">
+      <div class="table-scroll">
+        <table id="altChoiceTable">
+          <thead>
+            <tr id="altChoiceTableHead"></tr>
+          </thead>
+          <tbody id="altChoiceBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="altProbabilitySection">
+    <h2 id="altProbabilityHeading">Group Draw Probability</h2>
+    <p id="altProbabilityDesc"></p>
+    <div class="table-scroll">
+      <table id="altProbabilityTable">
+        <thead>
+          <tr id="altProbabilityTableHead"></tr>
+        </thead>
+        <tbody id="altProbabilityBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="altMatrixSection">
+    <h2 id="altMatrixHeading">Where The Team Stands</h2>
+    <p id="altMatrixDesc"></p>
+    <p id="altMatrixEmpty" class="empty-state" hidden></p>
+    <div class="table-scroll" id="altMatrixWrap">
+      <table id="altMatrixTable">
+        <thead>
+          <tr id="altMatrixTableHead"></tr>
+        </thead>
+        <tbody id="altMatrixBody"></tbody>
+      </table>
+    </div>
+    <div class="chart-legend" id="altMatrixLegend"></div>
   </section>
 </div>
 
@@ -347,9 +399,11 @@
       rulesHeading: "Key Rules",
       rosterHeading: "Roster",
       tabOverview: "Overview",
+      tabAlt: "Alternative Application",
       tabRoster: "Edit Roster",
       tabRules: "Rules",
       tabData: "Data",
+      altIntro: "See the impact of applying differently: set up a separate Group Choice here (it doesn't affect your primary strategy on the Overview tab) and compare its draw probability and sequencing against it.",
       dataHeading: "Data",
       dataStatusEmpty: "No roster loaded yet. Upload your group's filled-in .xlsx template below to see your team.",
       dataStatusUploaded: (n) => `Showing uploaded data for ${n} hunter${n === 1 ? "" : "s"}.`,
@@ -429,9 +483,11 @@
       rulesHeading: "Règles clés",
       rosterHeading: "Liste des chasseurs",
       tabOverview: "Aperçu",
+      tabAlt: "Demande alternative",
       tabRoster: "Modifier la liste",
       tabRules: "Règles",
       tabData: "Données",
+      altIntro: "Voyez l'impact d'une demande différente : configurez ici un choix de groupe distinct (n'affecte pas votre stratégie principale de l'onglet Aperçu) et comparez sa probabilité de tirage et sa séquence à celle-ci.",
       dataHeading: "Données",
       dataStatusEmpty: "Aucune liste chargée pour l'instant. Téléversez le modèle .xlsx rempli de votre groupe ci-dessous pour voir votre équipe.",
       dataStatusUploaded: (n) => `Affichage des données téléversées pour ${n} chasseur${n === 1 ? "" : "s"}.`,
@@ -528,29 +584,32 @@
   const HUNTER_SEED = [
     {
       name: "Alex",
+      northernResident: false,
       pointsHistory: [
-        { year: 2023, points: 1, tagType: null, claimed: false, northernResident: false },
-        { year: 2024, points: 2, tagType: null, claimed: false, northernResident: false },
-        { year: 2025, points: 3, tagType: null, claimed: false, northernResident: false },
-        { year: 2026, points: 0, tagType: "Cow/calf", claimed: true, northernResident: false }
+        { year: 2023, points: 1, tagType: null, claimed: false },
+        { year: 2024, points: 2, tagType: null, claimed: false },
+        { year: 2025, points: 3, tagType: null, claimed: false },
+        { year: 2026, points: 0, tagType: "Cow/calf", claimed: true }
       ]
     },
     {
       name: "Mike",
+      northernResident: false,
       pointsHistory: [
-        { year: 2023, points: 1, tagType: null, claimed: false, northernResident: false },
-        { year: 2024, points: 2, tagType: null, claimed: false, northernResident: false },
-        { year: 2025, points: 3, tagType: null, claimed: false, northernResident: false },
-        { year: 2026, points: 4, tagType: null, claimed: false, northernResident: false }
+        { year: 2023, points: 1, tagType: null, claimed: false },
+        { year: 2024, points: 2, tagType: null, claimed: false },
+        { year: 2025, points: 3, tagType: null, claimed: false },
+        { year: 2026, points: 4, tagType: null, claimed: false }
       ]
     },
     {
       name: "Steve",
+      northernResident: false,
       pointsHistory: [
-        { year: 2023, points: 1, tagType: null, claimed: false, northernResident: false },
-        { year: 2024, points: 2, tagType: null, claimed: false, northernResident: false },
-        { year: 2025, points: 3, tagType: null, claimed: false, northernResident: false },
-        { year: 2026, points: 4, tagType: null, claimed: false, northernResident: false }
+        { year: 2023, points: 1, tagType: null, claimed: false },
+        { year: 2024, points: 2, tagType: null, claimed: false },
+        { year: 2025, points: 3, tagType: null, claimed: false },
+        { year: 2026, points: 4, tagType: null, claimed: false }
       ]
     }
   ];
@@ -629,9 +688,9 @@
   // ---------------------------------------------------------------------
   // computeTimeline - MPR comparison helper. NORTHERN_PREFERENCE_POINT is
   // applied here only, never to a hunter's banked pointsHistory values, and
-  // only for hunters whose latest record is flagged northernResident (from
-  // the uploaded roster's NorthernResident column) - it does not apply to
-  // every hunter by default.
+  // only for hunters flagged northernResident (a per-hunter attribute set
+  // from the uploaded roster's NorthernResident column, or edited directly)
+  // - it does not apply to every hunter by default.
   // ---------------------------------------------------------------------
   function latestEntry(hunter) {
     const history = hunter.pointsHistory;
@@ -660,8 +719,7 @@
   }
 
   function isNorthernResident(hunter) {
-    const entry = latestEntry(hunter);
-    return !!(entry && entry.northernResident);
+    return !!(hunter && hunter.northernResident);
   }
 
   function computeTimeline(hunters) {
@@ -963,11 +1021,24 @@
 
   function parseRosterRows(rows) {
     const byHunter = new Map();
+    const northernByHunter = new Map();
     (rows || []).forEach((row) => {
       const name = String(row.Hunter || row.hunter || "").trim();
       const year = Number(row.Year ?? row.year);
       const points = Number(row.Points ?? row.points);
-      if (!name || !Number.isFinite(year) || !Number.isFinite(points)) return;
+      if (!name) return;
+
+      // NorthernResident is a per-hunter attribute (residency doesn't change
+      // year to year), even though the template lists it on every row - if
+      // ANY row for this hunter says Y, treat the hunter as a Northern
+      // resident, so a single marked row is never silently lost.
+      if (truthyFlag(row.NorthernResident ?? row.northernResident)) {
+        northernByHunter.set(name, true);
+      } else if (!northernByHunter.has(name)) {
+        northernByHunter.set(name, false);
+      }
+
+      if (!Number.isFinite(year) || !Number.isFinite(points)) return;
 
       const entry = {
         year,
@@ -976,8 +1047,7 @@
         claimed: truthyFlag(row.Claimed ?? row.claimed),
         wmu: row.WMU || row.wmu || null,
         season: row.Season || row.season || null,
-        mooseType: row.MooseType || row.mooseType || null,
-        northernResident: truthyFlag(row.NorthernResident ?? row.northernResident)
+        mooseType: row.MooseType || row.mooseType || null
       };
 
       if (!byHunter.has(name)) byHunter.set(name, []);
@@ -987,7 +1057,7 @@
     const roster = [];
     byHunter.forEach((pointsHistory, name) => {
       pointsHistory.sort((a, b) => a.year - b.year);
-      roster.push({ name, pointsHistory });
+      roster.push({ name, pointsHistory, northernResident: !!northernByHunter.get(name) });
     });
     roster.sort((a, b) => a.name.localeCompare(b.name));
     return roster;
@@ -995,7 +1065,10 @@
 
   // rosterToRows - the inverse of parseRosterRows, so edits made in-browser
   // can be exported back out as the same flat template shape for re-upload
-  // or hand-off to another tool.
+  // or hand-off to another tool. NorthernResident is written on every row
+  // for the same hunter (a hunter-level attribute), so re-importing an
+  // exported file round-trips correctly regardless of which row a reader
+  // happens to check.
   function rosterToRows(roster) {
     const rows = [];
     (roster || []).forEach((hunter) => {
@@ -1009,7 +1082,7 @@
           WMU: entry.wmu || "",
           Season: entry.season || "",
           MooseType: entry.mooseType || "",
-          NorthernResident: entry.northernResident ? "Y" : "N"
+          NorthernResident: hunter.northernResident ? "Y" : "N"
         });
       });
     });
@@ -1057,7 +1130,8 @@
         STORAGE_KEY,
         JSON.stringify({
           roster: activeRosterIsUploaded ? activeRoster : null,
-          groupChoice: groupChoice
+          groupChoice: groupChoice,
+          altGroupChoice: altGroupChoice
         })
       );
     } catch (e) {
@@ -1096,6 +1170,13 @@
   let activeRoster = [];
   let activeRosterIsUploaded = false;
   let groupChoice = JSON.parse(JSON.stringify(DEFAULT_GROUP_CHOICE));
+  // The Alternative Application tab is a second, independent Group Choice
+  // over the same roster, so the group can compare "what if we applied
+  // differently" against the primary strategy above. It starts blank
+  // (not a copy of the default) so it's obviously a scenario to configure,
+  // not a second copy of the real plan.
+  const BLANK_GROUP_CHOICE = { primary: [null, null, null], secondChance: [null, null, null] };
+  let altGroupChoice = JSON.parse(JSON.stringify(BLANK_GROUP_CHOICE));
 
   (function restorePersistedState() {
     const saved = loadPersistedState();
@@ -1107,10 +1188,14 @@
     if (isValidGroupChoice(saved.groupChoice)) {
       groupChoice = saved.groupChoice;
     }
+    if (isValidGroupChoice(saved.altGroupChoice)) {
+      altGroupChoice = saved.altGroupChoice;
+    }
   })();
 
-  function setChoiceSlot(stage, index, field, value) {
-    const list = (groupChoice[stage] || []).slice();
+  function setChoiceSlot(stage, index, field, value, variant) {
+    const target = variant === "alt" ? altGroupChoice : groupChoice;
+    const list = (target[stage] || []).slice();
     if (field === "wmu" && !value) {
       list[index] = null;
     } else {
@@ -1128,7 +1213,9 @@
       }
       list[index] = slot;
     }
-    groupChoice = Object.assign({}, groupChoice, { [stage]: list });
+    const updated = Object.assign({}, target, { [stage]: list });
+    if (variant === "alt") altGroupChoice = updated;
+    else groupChoice = updated;
     persistState();
     render();
   }
@@ -1145,12 +1232,20 @@
 
   function updateEntryField(hunterName, idx, field, value) {
     const hunter = findHunter(hunterName);
-    const entry = hunter && hunter.pointsHistory[idx];
+    if (!hunter) return;
+    if (field === "northernResident") {
+      // Hunter-level attribute, not per-row: applies to every year for
+      // this hunter, and isn't reset when a new year is added.
+      hunter.northernResident = !!value;
+      markEditedAndPersist();
+      return;
+    }
+    const entry = hunter.pointsHistory[idx];
     if (!entry) return;
     if (field === "year" || field === "points") {
       const n = Number(value);
       if (Number.isFinite(n)) entry[field] = n;
-    } else if (field === "claimed" || field === "northernResident") {
+    } else if (field === "claimed") {
       entry[field] = !!value;
     } else if (field === "tagType") {
       entry.tagType = value ? value : null;
@@ -1170,7 +1265,6 @@
       points: 0,
       tagType: null,
       claimed: false,
-      northernResident: false,
       wmu: null,
       season: null,
       mooseType: null
@@ -1191,13 +1285,13 @@
     activeRoster = activeRoster.concat([
       {
         name: trimmed,
+        northernResident: false,
         pointsHistory: [
           {
             year: new Date().getFullYear(),
             points: 0,
             tagType: null,
             claimed: false,
-            northernResident: false,
             wmu: null,
             season: null,
             mooseType: null
@@ -1265,8 +1359,6 @@
         tagCell.appendChild(makeEditInput("text", entry.tagType || "", hunter.name, idx, "tagType"));
         const claimedCell = document.createElement("td");
         claimedCell.appendChild(makeEditInput("checkbox", entry.claimed, hunter.name, idx, "claimed"));
-        const northernCell = document.createElement("td");
-        northernCell.appendChild(makeEditInput("checkbox", entry.northernResident, hunter.name, idx, "northernResident"));
         const actionsCell = document.createElement("td");
         const delBtn = document.createElement("button");
         delBtn.type = "button";
@@ -1276,7 +1368,17 @@
         delBtn.dataset.idx = String(idx);
         actionsCell.appendChild(delBtn);
 
-        tr.append(nameCell, yearCell, pointsCell, tagCell, claimedCell, northernCell, actionsCell);
+        // Northern resident is a per-hunter attribute, not per-year, so it
+        // is shown once per hunter (rowspan over their whole block) rather
+        // than repeated - and edited once - on every row.
+        if (idx === 0) {
+          const northernCell = document.createElement("td");
+          northernCell.rowSpan = hunter.pointsHistory.length;
+          northernCell.appendChild(makeEditInput("checkbox", hunter.northernResident, hunter.name, idx, "northernResident"));
+          tr.append(nameCell, yearCell, pointsCell, tagCell, claimedCell, northernCell, actionsCell);
+        } else {
+          tr.append(nameCell, yearCell, pointsCell, tagCell, claimedCell, actionsCell);
+        }
         body.appendChild(tr);
       });
 
@@ -1307,7 +1409,8 @@
       appTitle: "appTitle",
       rulesHeading: "rulesHeading",
       rosterHeading: "rosterHeading",
-      dataHeading: "dataHeading"
+      dataHeading: "dataHeading",
+      altIntro: "altIntro"
     };
     Object.keys(map).forEach((key) => {
       const el = document.getElementById(map[key]);
@@ -1343,13 +1446,15 @@
     select.value = options.includes(current) ? current : "";
   }
 
-  function renderChoiceTable() {
-    const head = document.getElementById("choiceTableHead");
-    const body = document.getElementById("choiceBody");
+  function renderChoiceTable(variant) {
+    const isAlt = variant === "alt";
+    const choice = isAlt ? altGroupChoice : groupChoice;
+    const head = document.getElementById(isAlt ? "altChoiceTableHead" : "choiceTableHead");
+    const body = document.getElementById(isAlt ? "altChoiceBody" : "choiceBody");
     if (!head || !body) return;
-    const heading = document.getElementById("targetHeading");
+    const heading = document.getElementById(isAlt ? "altTargetHeading" : "targetHeading");
     if (heading) heading.textContent = t("targetHeading");
-    const desc = document.getElementById("targetDesc");
+    const desc = document.getElementById(isAlt ? "altTargetDesc" : "targetDesc");
     if (desc) desc.textContent = t("targetDesc");
 
     const cols = t("choiceColumns");
@@ -1369,7 +1474,7 @@
         body.appendChild(sectionRow);
       }
 
-      const slot = (groupChoice[row.stage] || [])[row.index];
+      const slot = (choice[row.stage] || [])[row.index];
       const tr = document.createElement("tr");
       const labelCell = document.createElement("td");
       labelCell.className = "choice-label";
@@ -1382,6 +1487,7 @@
       wmuSel.dataset.stage = row.stage;
       wmuSel.dataset.index = String(row.index);
       wmuSel.dataset.field = "wmu";
+      if (variant === "alt") wmuSel.dataset.variant = "alt";
       fillSelect(wmuSel, availableWMUs(), slot ? slot.wmu : "", t("choiceNone"));
       wmuCell.appendChild(wmuSel);
       tr.appendChild(wmuCell);
@@ -1392,6 +1498,7 @@
       typeSel.dataset.stage = row.stage;
       typeSel.dataset.index = String(row.index);
       typeSel.dataset.field = "mooseType";
+      if (variant === "alt") typeSel.dataset.variant = "alt";
       typeSel.disabled = !slot;
       fillSelect(typeSel, slot ? availableMooseTypes(slot.wmu) : [], slot ? slot.mooseType : "");
       typeCell.appendChild(typeSel);
@@ -1403,6 +1510,7 @@
       seasonSel.dataset.stage = row.stage;
       seasonSel.dataset.index = String(row.index);
       seasonSel.dataset.field = "season";
+      if (variant === "alt") seasonSel.dataset.variant = "alt";
       seasonSel.disabled = !slot;
       fillSelect(seasonSel, slot ? availableSeasons(slot.wmu, slot.mooseType) : [], slot ? slot.season : "");
       seasonCell.appendChild(seasonSel);
@@ -1425,13 +1533,15 @@
     return "prob-low";
   }
 
-  function renderProbabilityTable() {
-    const head = document.getElementById("probabilityTableHead");
-    const body = document.getElementById("probabilityBody");
+  function renderProbabilityTable(variant) {
+    const isAlt = variant === "alt";
+    const choice = isAlt ? altGroupChoice : groupChoice;
+    const head = document.getElementById(isAlt ? "altProbabilityTableHead" : "probabilityTableHead");
+    const body = document.getElementById(isAlt ? "altProbabilityBody" : "probabilityBody");
     if (!head || !body) return;
-    const heading = document.getElementById("probabilityHeading");
+    const heading = document.getElementById(isAlt ? "altProbabilityHeading" : "probabilityHeading");
     if (heading) heading.textContent = t("probabilityHeading");
-    const desc = document.getElementById("probabilityDesc");
+    const desc = document.getElementById(isAlt ? "altProbabilityDesc" : "probabilityDesc");
     if (desc) desc.textContent = t("probabilityDesc");
 
     const currentYear = new Date().getFullYear();
@@ -1440,7 +1550,7 @@
     head.innerHTML = `<th>${cols.year}</th><th>${cols.probability}</th>`;
 
     body.innerHTML = "";
-    if (activeRoster.length === 0 || collectChoiceSlots(groupChoice).length === 0) {
+    if (activeRoster.length === 0 || collectChoiceSlots(choice).length === 0) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
       td.colSpan = 2;
@@ -1450,7 +1560,7 @@
       return;
     }
 
-    const table = buildGroupProbabilityTable(activeRoster, groupChoice, currentYear, endYear);
+    const table = buildGroupProbabilityTable(activeRoster, choice, currentYear, endYear);
     table.forEach((row) => {
       const tr = document.createElement("tr");
       const yearCell = document.createElement("td");
@@ -1590,17 +1700,20 @@
     return { years: matrix.years, rows };
   }
 
-  function renderMatrix() {
-    const head = document.getElementById("matrixTableHead");
-    const body = document.getElementById("matrixBody");
+  function renderMatrix(variant) {
+    const isAlt = variant === "alt";
+    const choice = isAlt ? altGroupChoice : groupChoice;
+    const sort = isAlt ? altMatrixSort : matrixSort;
+    const head = document.getElementById(isAlt ? "altMatrixTableHead" : "matrixTableHead");
+    const body = document.getElementById(isAlt ? "altMatrixBody" : "matrixBody");
     if (!head || !body) return;
-    const heading = document.getElementById("matrixHeading");
+    const heading = document.getElementById(isAlt ? "altMatrixHeading" : "matrixHeading");
     if (heading) heading.textContent = t("matrixHeading");
-    const desc = document.getElementById("matrixDesc");
+    const desc = document.getElementById(isAlt ? "altMatrixDesc" : "matrixDesc");
     if (desc) desc.textContent = t("matrixDesc");
 
-    const empty = document.getElementById("matrixEmpty");
-    const wrap = document.getElementById("matrixWrap");
+    const empty = document.getElementById(isAlt ? "altMatrixEmpty" : "matrixEmpty");
+    const wrap = document.getElementById(isAlt ? "altMatrixWrap" : "matrixWrap");
     const isEmpty = activeRoster.length === 0;
     if (empty) {
       empty.hidden = !isEmpty;
@@ -1617,13 +1730,13 @@
     const historyYears = activeRoster.flatMap((h) => (h.pointsHistory || []).map((e) => e.year));
     const startYear = historyYears.length ? Math.min(currentYear, ...historyYears) : currentYear;
     const endYear = currentYear + FORECAST_SPAN_YEARS;
-    let matrix = buildGroupMatrix(activeRoster, groupChoice, startYear, endYear);
-    matrix = sortMatrixRows(matrix, matrixSort.key, matrixSort.direction);
+    let matrix = buildGroupMatrix(activeRoster, choice, startYear, endYear);
+    matrix = sortMatrixRows(matrix, sort.key, sort.direction);
 
     const nameLabel = t("table").name;
-    const arrow = matrixSort.direction === "desc" ? " ▾" : " ▴";
+    const arrow = sort.direction === "desc" ? " ▾" : " ▴";
     function headerCell(key, label) {
-      const sorted = matrixSort.key === key;
+      const sorted = sort.key === key;
       return (
         '<th class="matrix-col' +
         (key === currentYear ? " matrix-current" : "") +
@@ -1631,6 +1744,7 @@
         (sorted ? " active" : "") +
         '" data-action="sort-matrix" data-key="' +
         key +
+        (isAlt ? '" data-variant="alt' : "") +
         '">' +
         label +
         (sorted ? arrow : "") +
@@ -1667,7 +1781,7 @@
       body.appendChild(tr);
     });
 
-    const legend = document.getElementById("matrixLegend");
+    const legend = document.getElementById(isAlt ? "altMatrixLegend" : "matrixLegend");
     if (legend) legend.innerHTML = t("matrixLegend");
   }
 
@@ -1687,18 +1801,22 @@
   // it into tabs groups related tools together and gives a first, glanceable
   // "Overview" screen instead of making the reader scroll past everything.
   // ---------------------------------------------------------------------
-  const TAB_IDS = ["overview", "roster", "rules", "data"];
+  const TAB_IDS = ["overview", "alt", "roster", "rules", "data"];
   let activeTab = "overview";
   let matrixSort = { key: "name", direction: "asc" };
+  let altMatrixSort = { key: "name", direction: "asc" };
 
-  function sortMatrixBy(key) {
+  function sortMatrixBy(key, variant) {
+    const isAlt = variant === "alt";
+    const current = isAlt ? altMatrixSort : matrixSort;
     const numericKey = key === "name" ? "name" : Number(key);
-    if (matrixSort.key === numericKey) {
-      matrixSort = { key: numericKey, direction: matrixSort.direction === "asc" ? "desc" : "asc" };
-    } else {
-      matrixSort = { key: numericKey, direction: "asc" };
-    }
-    renderMatrix();
+    const next =
+      current.key === numericKey
+        ? { key: numericKey, direction: current.direction === "asc" ? "desc" : "asc" }
+        : { key: numericKey, direction: "asc" };
+    if (isAlt) altMatrixSort = next;
+    else matrixSort = next;
+    renderMatrix(variant);
   }
 
   function showTab(name) {
@@ -1726,9 +1844,12 @@
     renderBanner();
     renderRules();
     renderRoster();
-    renderChoiceTable();
-    renderProbabilityTable();
-    renderMatrix();
+    renderChoiceTable("overview");
+    renderProbabilityTable("overview");
+    renderMatrix("overview");
+    renderChoiceTable("alt");
+    renderProbabilityTable("alt");
+    renderMatrix("alt");
     renderDataStatus();
     renderTabs();
     const toggle = document.getElementById("langToggle");
@@ -1791,7 +1912,7 @@
       return;
     }
     if (el.dataset.action === "edit-choice") {
-      setChoiceSlot(el.dataset.stage, Number(el.dataset.index), el.dataset.field, el.value);
+      setChoiceSlot(el.dataset.stage, Number(el.dataset.index), el.dataset.field, el.value, el.dataset.variant);
     }
   }
 
@@ -1804,7 +1925,7 @@
     else if (action === "add-hunter") addHunter();
     else if (action === "export-roster") exportRoster();
     else if (action === "show-tab") showTab(el.dataset.tab);
-    else if (action === "sort-matrix") sortMatrixBy(el.dataset.key);
+    else if (action === "sort-matrix") sortMatrixBy(el.dataset.key, el.dataset.variant);
   }
 
   if (typeof document !== "undefined") {
@@ -1847,6 +1968,8 @@
       MOOSE_TRENDS,
       DEFAULT_GROUP_CHOICE,
       getGroupChoice: () => groupChoice,
+      getAltGroupChoice: () => altGroupChoice,
+      BLANK_GROUP_CHOICE,
       setChoiceSlot,
       getTrendSeries,
       availableWMUs,
@@ -1868,7 +1991,10 @@
       combinedProbabilityForPoints,
       sortMatrixBy,
       getMatrixSort: () => matrixSort,
+      getAltMatrixSort: () => altMatrixSort,
       renderMatrix,
+      renderChoiceTable,
+      renderProbabilityTable,
       updateEntryField,
       addYearForHunter,
       deleteEntry,
