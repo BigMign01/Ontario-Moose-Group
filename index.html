@@ -166,11 +166,16 @@
   .chart-legend i.legend-ready { background: var(--accent-soft); border: 1px solid var(--accent); }
   .chart-legend i.legend-current { background: var(--surface-2); border: 1px solid var(--ink-dim); }
 
-  table[id$="atrixTable"] { table-layout: fixed; }
-  table[id$="atrixTable"] th, table[id$="atrixTable"] td { text-align: center; padding: .5rem .55rem; white-space: nowrap; }
+  /* table-layout: auto + width: auto (overriding the global table{width:100%})
+     lets this table grow wider than its wrapper once there are enough year
+     columns, so .table-scroll's overflow-x: auto actually kicks in instead
+     of squeezing every column down to fit. min-width: 100% keeps it filling
+     the wrapper when there's few enough years that it doesn't need to. */
+  table[id$="atrixTable"] { table-layout: auto; width: auto; min-width: 100%; }
+  table[id$="atrixTable"] th, table[id$="atrixTable"] td { text-align: center; padding: .5rem .55rem; white-space: nowrap; min-width: 3.6rem; }
   table[id$="atrixTable"] th:first-child, table[id$="atrixTable"] td.matrix-name {
     position: sticky; left: 0; background: var(--bg); text-align: left; z-index: 1;
-    box-shadow: 1px 0 0 var(--line);
+    box-shadow: 1px 0 0 var(--line); min-width: 7rem;
   }
   table[id$="atrixTable"] tbody tr:hover td.matrix-name { background: var(--surface-2); }
   .matrix-name { font-weight: 600; }
@@ -184,6 +189,9 @@
   .matrix-tag-sim { color: var(--accent); }
   .matrix-sequence-tag { background: var(--accent); color: #fff; font-weight: 700; border-radius: .35rem; }
   .matrix-sequence-tag .matrix-tag-sim { color: #fff; }
+  .matrix-cutoff-row { border-bottom: 2px solid var(--line); }
+  .matrix-cutoff-label { font-size: .78rem; font-weight: 600; color: var(--ink-dim); font-style: italic; }
+  td.matrix-cutoff { font-size: .82rem; color: var(--ink-dim); font-style: italic; }
   .matrix-sort-btn {
     background: none; border: none; padding: 0; margin: 0; font: inherit; font-weight: inherit;
     color: inherit; cursor: pointer; white-space: nowrap;
@@ -429,6 +437,7 @@
       matrixDesc: "Each hunter's points by year. Past years show real points banked and the tag result if they won one. Years beyond their latest record are simulated year by year: once a hunter's points would clear the cutoff for any choice above, that's their tag year, marked “Tag”, and their points reset to 0 the year after — just like a real claimed tag. If two or more hunters would clear the cutoff the same year, only the one with the most points is picked as that year's tag holder; the others stay ready but keep building instead of resetting. Click any column header to sort by it.",
       matrixLegend: "<span><i class=\"legend-ready\"></i>Ready to clear the cutoff</span><span><i class=\"legend-sequence\"></i>This year's tag (points reset next year)</span><span><i class=\"legend-current\"></i>Current year</span>",
       matrixSequenceBadge: "Tag",
+      matrixCutoffLabel: "Projected cutoff",
       matrixEmptyState: "No roster loaded yet. Upload your group's .xlsx template on the Data tab to see the team here.",
       rosterEmptyState: "No roster loaded yet. Upload your group's .xlsx template on the Data tab, or add a hunter below to start one by hand.",
       rosterEditHint: "Points, tag, claimed, and Northern status are editable directly in the table — changes save automatically in this browser.",
@@ -513,6 +522,7 @@
       matrixDesc: "Les points de chaque chasseur par année. Les années passées montrent les points réels et le résultat du contingent s'il en a gagné un. Les années après son dernier dossier connu sont simulées année par année : dès que les points d'un chasseur franchiraient le seuil d'un des choix ci-dessus, c'est son année de contingent, marquée « Contingent », et ses points reviennent à 0 l'année suivante — comme un vrai contingent réclamé. Si deux chasseurs ou plus franchiraient le seuil la même année, seul celui qui a le plus de points est choisi comme détenteur du contingent cette année-là; les autres restent prêts mais continuent d'accumuler au lieu de revenir à 0. Cliquez sur un en-tête de colonne pour trier.",
       matrixLegend: "<span><i class=\"legend-ready\"></i>Prêt à franchir le seuil</span><span><i class=\"legend-sequence\"></i>Contingent de l'année (points remis à 0 l'an prochain)</span><span><i class=\"legend-current\"></i>Année en cours</span>",
       matrixSequenceBadge: "Contingent",
+      matrixCutoffLabel: "Seuil projeté",
       matrixEmptyState: "Aucune liste chargée pour l'instant. Téléversez le modèle .xlsx de votre groupe dans l'onglet Données pour voir l'équipe ici.",
       rosterEmptyState: "Aucune liste chargée pour l'instant. Téléversez le modèle .xlsx de votre groupe dans l'onglet Données, ou ajoutez un chasseur ci-dessous pour en commencer une à la main.",
       rosterEditHint: "Les points, le contingent, le statut réclamé et le statut Nord sont modifiables directement dans le tableau — les changements se sauvegardent automatiquement dans ce navigateur.",
@@ -914,6 +924,27 @@
       stage: entry.stage,
       choice: entry.choice
     });
+  }
+
+  // buildCutoffRows - the actual numbers behind the matrix's "ready"/tag
+  // calls, one row per filled Group Choice slot that resolves to real
+  // trend data: the projected cutoff (from the real MNR trend, the same
+  // linear fit drawProbability() ramps against) for every year shown. This
+  // is what a projected cell's points are being compared to - surfaced
+  // directly instead of asking the group to trust a black box.
+  function buildCutoffRows(groupChoice, years) {
+    return collectChoiceSlots(groupChoice)
+      .map((entry) => {
+        const trend = slotTrend(entry);
+        if (!trend) return null;
+        const label = [entry.slot.wmu, entry.slot.mooseType, entry.slot.season].filter(Boolean).join(" ") +
+          " (" + entry.stage + " " + entry.choice + ")";
+        return {
+          label,
+          cutoffs: years.map((year) => Math.round(projectCutoff(trend, year) * 10) / 10)
+        };
+      })
+      .filter(Boolean);
   }
 
   function hunterProjectedPointsAtYear(hunter, year) {
@@ -1754,6 +1785,29 @@
     head.innerHTML = headerCell("name", nameLabel) + matrix.years.map((y) => headerCell(y, y)).join("");
 
     body.innerHTML = "";
+
+    // Cutoff rows - the actual projected numbers a hunter's points are
+    // being compared against each year, one row per filled Group Choice
+    // slot that has real trend data. This is what decides "ready"/tag,
+    // shown plainly instead of leaving the group to trust it blind.
+    const cutoffRows = buildCutoffRows(choice, matrix.years);
+    cutoffRows.forEach((cutoffRow) => {
+      const tr = document.createElement("tr");
+      tr.className = "matrix-cutoff-row";
+      const labelCell = document.createElement("td");
+      labelCell.className = "matrix-name matrix-cutoff-label";
+      labelCell.textContent = t("matrixCutoffLabel") + " – " + cutoffRow.label;
+      tr.appendChild(labelCell);
+      cutoffRow.cutoffs.forEach((cutoff, i) => {
+        const td = document.createElement("td");
+        td.className = "matrix-cell matrix-cutoff";
+        if (matrix.years[i] === currentYear) td.classList.add("matrix-current");
+        td.textContent = cutoff;
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+
     matrix.rows.forEach((row) => {
       const tr = document.createElement("tr");
       const nameCell = document.createElement("td");
@@ -1987,6 +2041,7 @@
       buildGroupProbabilityTable,
       pointsGoingForward,
       buildGroupMatrix,
+      buildCutoffRows,
       sortMatrixRows,
       combinedProbabilityForPoints,
       sortMatrixBy,

@@ -363,7 +363,7 @@ check("sortMatrixBy toggles direction on repeated clicks of the same column and 
   appDom.sortMatrixBy("name");
   assert.strictEqual(appDom.getMatrixSort().direction, "desc", "clicking the already-active column flips direction");
   const doc = dom.window.document;
-  const firstRowName = doc.querySelector("#matrixBody tr td.matrix-name").textContent;
+  const firstRowName = doc.querySelector("#matrixBody tr:not(.matrix-cutoff-row) td.matrix-name").textContent;
   assert.strictEqual(firstRowName, "Zed", "descending name sort should put Zed first");
 });
 
@@ -371,11 +371,37 @@ check("renderMatrix populates the matrix table with one row per hunter and one c
   const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/" });
   dom.window.APP.loadRoster(JSON.parse(JSON.stringify(dom.window.APP.HUNTER_SEED)));
   const doc = dom.window.document;
-  const rows = doc.querySelectorAll("#matrixBody tr");
+  const rows = doc.querySelectorAll("#matrixBody tr:not(.matrix-cutoff-row)");
   assert.strictEqual(rows.length, dom.window.APP.HUNTER_SEED.length);
   const headCells = doc.querySelectorAll("#matrixTableHead th");
   // Name column + (earliest history year..current year+7)
   assert.ok(headCells.length > 8, "should include past history years plus the projected span");
+});
+
+check("buildCutoffRows returns one row per filled slot with real trend data, with the actual projected numbers used for 'ready'", () => {
+  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
+  const rows = APP.buildCutoffRows(target, [2026, 2027, 2028]);
+  assert.strictEqual(rows.length, 1);
+  assert.ok(rows[0].label.includes("24"), "label should identify the WMU/type/season/choice this row is for");
+  assert.strictEqual(rows[0].cutoffs.length, 3);
+  rows[0].cutoffs.forEach((c) => assert.strictEqual(typeof c, "number"));
+});
+
+check("buildCutoffRows skips slots with no resolvable trend data and returns nothing when no slots are filled", () => {
+  const noData = { primary: [{ wmu: "x", mooseType: "x", season: "x" }, null, null], secondChance: [null, null, null] };
+  assert.strictEqual(APP.buildCutoffRows(noData, [2026]).length, 0);
+  assert.strictEqual(APP.buildCutoffRows({ primary: [null, null, null], secondChance: [null, null, null] }, [2026]).length, 0);
+});
+
+check("renderMatrix shows the actual cutoff numbers as a row in the table, not just a probability", () => {
+  const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/" });
+  dom.window.APP.loadRoster([{ name: "A", pointsHistory: [{ year: 2026, points: 5, tagType: null, claimed: false }] }]);
+  const doc = dom.window.document;
+  const cutoffRow = doc.querySelector("#matrixBody tr.matrix-cutoff-row");
+  assert.ok(cutoffRow, "a cutoff row should be rendered for the default WMU24 bull/gun choice");
+  const cutoffCells = [...cutoffRow.querySelectorAll("td.matrix-cutoff")];
+  assert.ok(cutoffCells.length > 0);
+  cutoffCells.forEach((td) => assert.ok(/^\d+(\.\d)?$/.test(td.textContent.trim()), "each cutoff cell should show a plain number"));
 });
 
 check("renderChoiceTable renders 6 rows (Primary 1-3, Second Chance 1-3) with the default slot pre-filled", () => {
