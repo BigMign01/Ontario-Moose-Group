@@ -173,6 +173,54 @@ check("a saved groupChoice with the wrong shape is ignored, falling back to the 
   assert.deepStrictEqual(dom.window.APP.getGroupChoice(), dom.window.APP.DEFAULT_GROUP_CHOICE);
 });
 
+check("sheetRowsToObjects finds the real header row even when row 1 is a legend note (the actual template shape)", () => {
+  const dom = freshApp();
+  const APP = dom.window.APP;
+  // Reproduces the real template's raw sheet shape: row 1 is a legend
+  // note, row 2 is the Hunter/Year/... header, then data rows - exactly
+  // what XLSX.utils.sheet_to_json(sheet, {header:1}) would return for the
+  // group's actual uploaded file.
+  const rawRows = [
+    ["Pale yellow = fields you edit · Pale orange = current draw year (2026) · see the Instructions tab", null, null, null, null, null, null, null],
+    ["Hunter", "Year", "Points", "TagType", "Claimed", "WMU", "Season", "MooseType"],
+    ["Gerard", 2020, 5, null, null, null, null, null],
+    ["Gerard", 2021, 6, "Cow/calf", "Y", 24, "Gun", null],
+    ["Carl", 2020, 2, null, null, null, null, null]
+  ];
+  const rows = APP.sheetRowsToObjects(rawRows);
+  assert.strictEqual(rows.length, 3, "the legend row must not become a bogus data row");
+  assert.strictEqual(rows[0].Hunter, "Gerard");
+  assert.strictEqual(rows[0].Year, 2020);
+  assert.strictEqual(rows[1].TagType, "Cow/calf");
+  assert.strictEqual(rows[1].Claimed, "Y");
+
+  const roster = APP.parseRosterRows(rows);
+  assert.strictEqual(roster.length, 2, "Gerard and Carl should both come through");
+  const gerard = roster.find((h) => h.name === "Gerard");
+  assert.strictEqual(gerard.pointsHistory.length, 2);
+  assert.strictEqual(gerard.pointsHistory[1].tagType, "Cow/calf");
+});
+
+check("sheetRowsToObjects also handles a plain sheet with the header on row 1 (no legend note)", () => {
+  const dom = freshApp();
+  const APP = dom.window.APP;
+  const rawRows = [
+    ["Hunter", "Year", "Points"],
+    ["Alex", 2026, 4]
+  ];
+  const rows = APP.sheetRowsToObjects(rawRows);
+  assert.strictEqual(rows.length, 1);
+  assert.strictEqual(rows[0].Hunter, "Alex");
+  assert.strictEqual(rows[0].Points, 4);
+});
+
+check("sheetRowsToObjects returns nothing usable when no row contains a Hunter header, instead of misreading random cells", () => {
+  const dom = freshApp();
+  const APP = dom.window.APP;
+  const rawRows = [["not", "a", "roster"], [1, 2, 3]];
+  assert.strictEqual(APP.sheetRowsToObjects(rawRows).length, 0);
+});
+
 check("exportRoster is wired to the export button and calls into XLSX when present (smoke test)", () => {
   const dom = freshApp();
   const doc = dom.window.document;

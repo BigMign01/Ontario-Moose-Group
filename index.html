@@ -890,6 +890,35 @@
   // the general-purpose ingestion path: any group's filled-in template
   // produces a roster the same way, regardless of who uploads it.
   // ---------------------------------------------------------------------
+  // sheetRowsToObjects - turns a raw array-of-arrays sheet (as read with
+  // XLSX's header:1 option) into row objects keyed by column header,
+  // finding the header row itself instead of assuming it's row 1. The
+  // template's own row 1 is a legend note ("Pale yellow = fields you
+  // edit..."), not the Hunter/Year/Points header - reading row 1 as the
+  // header (SheetJS's default) silently produced zero usable rows and
+  // made every real upload of the template fail with "couldn't read that
+  // file". This scans for whichever row actually contains "Hunter".
+  function sheetRowsToObjects(rawRows) {
+    if (!Array.isArray(rawRows)) return [];
+    const headerIndex = rawRows.findIndex(
+      (row) => Array.isArray(row) && row.some((cell) => String(cell == null ? "" : cell).trim().toLowerCase() === "hunter")
+    );
+    if (headerIndex === -1) return [];
+    const headers = rawRows[headerIndex].map((h) => String(h == null ? "" : h).trim());
+    return rawRows
+      .slice(headerIndex + 1)
+      .map((row) => {
+        const obj = {};
+        headers.forEach((h, i) => {
+          if (!h) return;
+          const cell = row[i];
+          obj[h] = cell === undefined ? null : cell;
+        });
+        return obj;
+      })
+      .filter((obj) => Object.keys(obj).some((k) => obj[k] !== null && obj[k] !== ""));
+  }
+
   function truthyFlag(value) {
     if (typeof value === "string") return value.trim().toUpperCase() === "Y";
     return !!value;
@@ -1581,7 +1610,8 @@
         const sheetName =
           workbook.SheetNames.find((n) => /points/i.test(n)) ||
           workbook.SheetNames[workbook.SheetNames.length - 1];
-        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: null });
+        const rawRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: null });
+        const rows = sheetRowsToObjects(rawRows);
         const roster = parseRosterRows(rows);
         if (roster.length === 0) throw new Error("empty roster");
         loadRoster(roster);
@@ -1664,6 +1694,7 @@
       getSeasonPhase,
       computeTimeline,
       parseRosterRows,
+      sheetRowsToObjects,
       rosterToRows,
       buildPointsSeries,
       loadRoster,
