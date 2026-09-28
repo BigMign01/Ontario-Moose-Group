@@ -60,22 +60,25 @@ check("clicking a tab nav button (delegated click) switches tabs, not just the d
   assert.ok(doc.getElementById("tab-data").classList.contains("active"));
 });
 
-check("the overview tab holds both the Group Choice controls and the team matrix, wired to the same target", () => {
+check("the overview tab holds the Group Choice table, the group probability table, and the team matrix", () => {
   const dom = freshApp();
   const doc = dom.window.document;
   const overviewPanel = doc.getElementById("tab-overview");
   assert.ok(overviewPanel.querySelector("#targetSection"), "Group Choice lives in the overview tab");
+  assert.ok(overviewPanel.querySelector("#probabilitySection"), "the group probability table lives in the overview tab");
   assert.ok(overviewPanel.querySelector("#matrixSection"), "the team matrix lives in the overview tab");
-  assert.strictEqual(doc.getElementById("targetWmu").value, dom.window.APP.getGroupTarget().wmu);
+  const firstWmuSelect = doc.querySelector('#choiceBody select[data-field="wmu"]');
+  assert.strictEqual(firstWmuSelect.value, dom.window.APP.getGroupChoice().primary[0].wmu);
 });
 
-check("switching the group target re-renders the matrix for the new WMU (one WMU at a time, never several)", () => {
+check("filling a second Group Choice slot re-renders the probability table without breaking the matrix", () => {
   const dom = freshApp();
-  dom.window.APP.setGroupTarget({ wmu: "28" });
-  assert.strictEqual(dom.window.document.getElementById("targetWmu").value, "28");
-  // the matrix table still renders (doesn't break) for a different single WMU
+  dom.window.APP.loadRoster([{ name: "A", pointsHistory: [{ year: 2026, points: 5, tagType: null, claimed: false, northernResident: false }] }]);
+  dom.window.APP.setChoiceSlot("primary", 1, "wmu", "28");
+  assert.strictEqual(dom.window.APP.getGroupChoice().primary[1].wmu, "28");
   assert.ok(dom.window.document.querySelectorAll("#matrixBody tr").length > 0);
-  dom.window.APP.setGroupTarget({ wmu: "24" }); // restore default
+  assert.ok(dom.window.document.querySelectorAll("#probabilityBody tr").length > 0);
+  dom.window.APP.setChoiceSlot("primary", 1, "wmu", ""); // restore default for later checks
 });
 
 check("setLang re-renders tab labels in the chosen language", () => {

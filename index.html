@@ -182,6 +182,30 @@
   td.matrix-ready { background: var(--accent-soft); color: var(--accent); font-weight: 700; border-radius: .35rem; }
   .matrix-tag { font-size: .68rem; font-weight: 500; color: var(--amber); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
 
+  .empty-state {
+    background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius);
+    padding: 1.4rem; text-align: center; font-size: .92rem; margin-top: .75rem;
+  }
+
+  #choiceTable th, #choiceTable td { text-align: left; }
+  #choiceTable .choice-label { font-weight: 600; white-space: nowrap; }
+  #choiceTable .choice-section-row td {
+    font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-dim);
+    font-weight: 700; border-bottom: none; padding-top: 1rem;
+  }
+  #choiceTable select {
+    background: var(--surface); border: 1px solid var(--line); color: var(--ink);
+    border-radius: .45rem; padding: .35rem .5rem; font: inherit; font-size: .9rem; min-width: 6rem;
+  }
+  .choice-nodata { font-size: .78rem; color: var(--red); }
+
+  #probabilityTable td, #probabilityTable th { text-align: center; }
+  #probabilityTable td:first-child, #probabilityTable th:first-child { text-align: left; }
+  .prob-cell { font-variant-numeric: tabular-nums; font-weight: 700; }
+  .prob-high { color: var(--accent); }
+  .prob-mid { color: var(--amber); }
+  .prob-low { color: var(--red); }
+
   @media (max-width: 640px) {
     .target-controls { flex-direction: column; align-items: stretch; }
     nav.tabs { overflow-x: auto; flex-wrap: nowrap; }
@@ -214,21 +238,35 @@
     <h2 id="targetHeading">Group Choice</h2>
     <p id="targetDesc"></p>
     <div class="panel">
-      <div class="target-controls">
-        <label><span id="targetWmuLabel">WMU</span> <select id="targetWmu"></select></label>
-        <label><span id="targetTypeLabel">Tag type</span> <select id="targetMooseType"></select></label>
-        <label><span id="targetSeasonLabel">Season</span> <select id="targetSeason"></select></label>
-        <label><span id="targetStageLabel">Stage</span> <select id="targetStage"></select></label>
-        <label><span id="targetChoiceLabel">Choice</span> <select id="targetChoice"></select></label>
+      <div class="table-scroll">
+        <table id="choiceTable">
+          <thead>
+            <tr id="choiceTableHead"></tr>
+          </thead>
+          <tbody id="choiceBody"></tbody>
+        </table>
       </div>
-      <p id="targetNoData" class="warning" hidden></p>
+    </div>
+  </section>
+
+  <section id="probabilitySection">
+    <h2 id="probabilityHeading">Group Draw Probability</h2>
+    <p id="probabilityDesc"></p>
+    <div class="table-scroll">
+      <table id="probabilityTable">
+        <thead>
+          <tr id="probabilityTableHead"></tr>
+        </thead>
+        <tbody id="probabilityBody"></tbody>
+      </table>
     </div>
   </section>
 
   <section id="matrixSection">
     <h2 id="matrixHeading">Where The Team Stands</h2>
     <p id="matrixDesc"></p>
-    <div class="table-scroll">
+    <p id="matrixEmpty" class="empty-state" hidden></p>
+    <div class="table-scroll" id="matrixWrap">
       <table id="matrixTable">
         <thead>
           <tr id="matrixTableHead"></tr>
@@ -244,7 +282,8 @@
   <section id="rosterSection">
     <h2 id="rosterHeading">Roster</h2>
     <p id="rosterEditHint"></p>
-    <div class="table-scroll">
+    <p id="rosterEmpty" class="empty-state" hidden></p>
+    <div class="table-scroll" id="rosterWrap">
       <table id="rosterTable">
         <thead>
           <tr id="rosterTableHead"><th>Name</th><th>Year</th><th>Points</th><th>Tag</th><th>Claimed</th><th>Northern</th><th></th></tr>
@@ -302,20 +341,31 @@
       tabRules: "Rules",
       tabData: "Data",
       dataHeading: "Data",
-      dataStatusDemo: (n) => `Showing demo data (${n} hunter${n === 1 ? "" : "s"}). Upload your group's filled-in .xlsx template to replace it.`,
+      dataStatusEmpty: "No roster loaded yet. Upload your group's filled-in .xlsx template below to see your team.",
       dataStatusUploaded: (n) => `Showing uploaded data for ${n} hunter${n === 1 ? "" : "s"}.`,
       dataStatusError: "Couldn't read that file. Make sure it's the roster template .xlsx with a Hunter/Year/Points row per entry.",
       targetHeading: "Group Choice",
-      targetDesc: "Pick the one WMU and tag type/season/stage/choice the group is chasing. Everything below — who's ready, who's building — is forecast for this one WMU at a time, using real Ontario draw data for the exact combination you pick.",
+      targetDesc: "The whole team applies with the same strategy, so set it once here: up to 3 ranked WMU/type/season choices for the Primary draw, and up to 3 for Second Chance — matching Ontario's real application form. Leave a row on “—” if the group doesn't use that choice slot.",
+      choiceColumns: { wmu: "WMU", type: "Tag type", season: "Season" },
+      choiceSectionPrimary: "Primary Allocation",
+      choiceSectionSecond: "Second Chance",
+      choicePrimary1: "Choice 1",
+      choicePrimary2: "Choice 2",
+      choicePrimary3: "Choice 3",
+      choiceSecond1: "Choice 1",
+      choiceSecond2: "Choice 2",
+      choiceSecond3: "Choice 3",
+      choiceNone: "—",
+      choiceNoData: "No draw data for this combination",
+      probabilityHeading: "Group Draw Probability",
+      probabilityDesc: "The chance at least one hunter in the group draws a tag that year through any of the choices above, combined — not any single hunter's odds. Based on each filled choice's real MNR cutoff trend.",
+      probabilityColumns: { year: "Year", probability: "Probability" },
+      probabilityEmpty: "Fill in at least one Group Choice above and load your roster to see this.",
       matrixHeading: "Where The Team Stands",
-      matrixDesc: "Each hunter's points by year. Past years show real points banked and the tag result if they won one; years beyond their latest record are projected (banked +1/year) for the WMU chosen above, and highlighted when that projection would clear the draw cutoff.",
+      matrixDesc: "Each hunter's points by year. Past years show real points banked and the tag result if they won one; years beyond their latest record are projected (banked +1/year), and highlighted when that projection would clear the cutoff for any of the choices above.",
       matrixLegend: "<span><i class=\"legend-ready\"></i>Projected to clear the cutoff</span><span><i class=\"legend-current\"></i>Current year</span>",
-      targetWmuLabel: "WMU",
-      targetTypeLabel: "Tag type",
-      targetSeasonLabel: "Season",
-      targetStageLabel: "Stage",
-      targetChoiceLabel: "Choice",
-      targetNoData: "No MNR draw data was ever fully awarded for this exact combination — try a different season, stage, or choice.",
+      matrixEmptyState: "No roster loaded yet. Upload your group's .xlsx template on the Data tab to see the team here.",
+      rosterEmptyState: "No roster loaded yet. Upload your group's .xlsx template on the Data tab, or add a hunter below to start one by hand.",
       rosterEditHint: "Points, tag, claimed, and Northern status are editable directly in the table — changes save automatically in this browser.",
       addHunterBtn: "+ Add hunter",
       addHunterPrompt: "Hunter's name:",
@@ -372,20 +422,31 @@
       tabRules: "Règles",
       tabData: "Données",
       dataHeading: "Données",
-      dataStatusDemo: (n) => `Affichage des données de démonstration (${n} chasseur${n === 1 ? "" : "s"}). Téléversez le modèle .xlsx rempli de votre groupe pour les remplacer.`,
+      dataStatusEmpty: "Aucune liste chargée pour l'instant. Téléversez le modèle .xlsx rempli de votre groupe ci-dessous pour voir votre équipe.",
       dataStatusUploaded: (n) => `Affichage des données téléversées pour ${n} chasseur${n === 1 ? "" : "s"}.`,
       dataStatusError: "Impossible de lire ce fichier. Assurez-vous qu'il s'agit du modèle de liste .xlsx avec une ligne Hunter/Year/Points par entrée.",
       targetHeading: "Choix du groupe",
-      targetDesc: "Choisissez la ZGF et le type de contingent/saison/étape/choix que le groupe vise. Tout ce qui suit — qui est prêt, qui est en construction — est prévu pour cette seule ZGF à la fois, à partir des vraies données de tirage de l'Ontario pour la combinaison exacte choisie.",
+      targetDesc: "Toute l'équipe postule avec la même stratégie, alors réglez-la une fois ici : jusqu'à 3 choix classés ZGF/type/saison pour le tirage primaire, et jusqu'à 3 pour la deuxième chance — comme le vrai formulaire de demande de l'Ontario. Laissez une ligne sur « — » si le groupe n'utilise pas ce choix.",
+      choiceColumns: { wmu: "ZGF", type: "Type de contingent", season: "Saison" },
+      choiceSectionPrimary: "Allocation primaire",
+      choiceSectionSecond: "Deuxième chance",
+      choicePrimary1: "Choix 1",
+      choicePrimary2: "Choix 2",
+      choicePrimary3: "Choix 3",
+      choiceSecond1: "Choix 1",
+      choiceSecond2: "Choix 2",
+      choiceSecond3: "Choix 3",
+      choiceNone: "—",
+      choiceNoData: "Aucune donnée de tirage pour cette combinaison",
+      probabilityHeading: "Probabilité de tirage du groupe",
+      probabilityDesc: "La probabilité qu'au moins un chasseur du groupe tire un contingent cette année-là, à travers l'ensemble des choix ci-dessus — pas les chances d'un seul chasseur. Basée sur la tendance réelle du seuil du MRN pour chaque choix rempli.",
+      probabilityColumns: { year: "Année", probability: "Probabilité" },
+      probabilityEmpty: "Remplissez au moins un choix du groupe ci-dessus et chargez votre liste pour voir ceci.",
       matrixHeading: "Où en est l'équipe",
-      matrixDesc: "Les points de chaque chasseur par année. Les années passées montrent les points réels et le résultat du contingent s'il en a gagné un; les années après son dernier dossier connu sont projetées (points bancarisés +1/an) pour la ZGF choisie ci-dessus, et surlignées quand cette projection franchirait le seuil de tirage.",
+      matrixDesc: "Les points de chaque chasseur par année. Les années passées montrent les points réels et le résultat du contingent s'il en a gagné un; les années après son dernier dossier connu sont projetées (points bancarisés +1/an), et surlignées quand cette projection franchirait le seuil de l'un des choix ci-dessus.",
       matrixLegend: "<span><i class=\"legend-ready\"></i>Projeté pour franchir le seuil</span><span><i class=\"legend-current\"></i>Année en cours</span>",
-      targetWmuLabel: "ZGF",
-      targetTypeLabel: "Type de contingent",
-      targetSeasonLabel: "Saison",
-      targetStageLabel: "Étape",
-      targetChoiceLabel: "Choix",
-      targetNoData: "Aucune donnée de tirage du MRN n'a jamais été pleinement attribuée pour cette combinaison exacte — essayez une autre saison, étape ou choix.",
+      matrixEmptyState: "Aucune liste chargée pour l'instant. Téléversez le modèle .xlsx de votre groupe dans l'onglet Données pour voir l'équipe ici.",
+      rosterEmptyState: "Aucune liste chargée pour l'instant. Téléversez le modèle .xlsx de votre groupe dans l'onglet Données, ou ajoutez un chasseur ci-dessous pour en commencer une à la main.",
       rosterEditHint: "Les points, le contingent, le statut réclamé et le statut Nord sont modifiables directement dans le tableau — les changements se sauvegardent automatiquement dans ce navigateur.",
       addHunterBtn: "+ Ajouter un chasseur",
       addHunterPrompt: "Nom du chasseur :",
@@ -641,7 +702,27 @@
     return node.map(([year, cutoff]) => ({ year, cutoff }));
   }
 
-  const DEFAULT_GROUP_TARGET = { wmu: "24", mooseType: "Bull", season: "Gun", stage: "Primary", choice: "1" };
+  // ---------------------------------------------------------------------
+  // Group Choice - the whole team is assumed to apply with the same
+  // strategy, matching Ontario's real draw form: up to 3 ranked WMU/type/
+  // season choices for Primary and up to 3 for Second Chance. A slot is
+  // null until the group fills it in; only filled slots count toward the
+  // forecast.
+  // ---------------------------------------------------------------------
+  const DEFAULT_GROUP_CHOICE = {
+    primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null],
+    secondChance: [null, null, null]
+  };
+
+  function isValidGroupChoice(value) {
+    return (
+      value &&
+      Array.isArray(value.primary) &&
+      value.primary.length === 3 &&
+      Array.isArray(value.secondChance) &&
+      value.secondChance.length === 3
+    );
+  }
 
   // ---------------------------------------------------------------------
   // Forecast engine - replaces a flat, hand-set MPR guess with a cutoff
@@ -716,6 +797,89 @@
       perYear.push({ year, cutoff: Math.round(cutoff * 10) / 10, expected: Math.round(expected * 100) / 100, status });
     }
     return perYear;
+  }
+
+  // ---------------------------------------------------------------------
+  // Combined-slot probability - a hunter (or the group) draws a tag that
+  // year if ANY filled Group Choice slot comes through, so slots combine
+  // as an OR: 1 - the chance every filled slot misses. Slots are treated
+  // as independent draws, which is the same simplifying assumption the
+  // single-target forecast already made per slot - real allocation runs
+  // choices in sequence rather than fully independently, but there's no
+  // per-hunter joint data to model the dependency, and it only matters
+  // when multiple slots would otherwise both be near-certain.
+  // ---------------------------------------------------------------------
+  function collectChoiceSlots(groupChoice) {
+    if (!groupChoice) return [];
+    const list = [];
+    (groupChoice.primary || []).forEach((slot, i) => {
+      if (slot && slot.wmu) list.push({ stage: "Primary", choice: String(i + 1), slot });
+    });
+    (groupChoice.secondChance || []).forEach((slot, i) => {
+      if (slot && slot.wmu) list.push({ stage: "Second Chance", choice: String(i + 1), slot });
+    });
+    return list;
+  }
+
+  function slotTrend(entry) {
+    return getTrendSeries({
+      wmu: entry.slot.wmu,
+      mooseType: entry.slot.mooseType,
+      season: entry.slot.season,
+      stage: entry.stage,
+      choice: entry.choice
+    });
+  }
+
+  function hunterProjectedPointsAtYear(hunter, year) {
+    const entry = (hunter.pointsHistory || []).find((e) => e.year === year);
+    if (entry) return entry.points;
+    const last = latestEntry(hunter);
+    if (last && year > last.year) return projectedPoints(hunter, year, last.year);
+    return null;
+  }
+
+  // Probability a single hunter draws a tag that year via any filled slot.
+  // Returns null (not 0) when there's nothing to compute from - no filled
+  // slots, no resolvable trend for any of them, or no known/projectable
+  // points for that hunter that year - so callers can tell "no data" apart
+  // from "genuinely near-zero odds".
+  function hunterCombinedProbability(hunter, year, groupChoice) {
+    const slots = collectChoiceSlots(groupChoice);
+    if (!slots.length) return null;
+    const points = hunterProjectedPointsAtYear(hunter, year);
+    if (points === null) return null;
+    const bonus = isNorthernResident(hunter) ? NORTHERN_PREFERENCE_POINT : 0;
+    let missAll = 1;
+    let any = false;
+    slots.forEach((entry) => {
+      const trend = slotTrend(entry);
+      if (!trend) return;
+      any = true;
+      const cutoff = projectCutoff(trend, year);
+      missAll *= 1 - drawProbability(points + bonus, cutoff);
+    });
+    return any ? 1 - missAll : null;
+  }
+
+  // Probability the GROUP (at least one hunter) draws a tag that year.
+  function groupProbability(roster, year, groupChoice) {
+    if (!roster || !roster.length) return null;
+    let missAll = 1;
+    let any = false;
+    roster.forEach((hunter) => {
+      const p = hunterCombinedProbability(hunter, year, groupChoice);
+      if (p === null) return;
+      any = true;
+      missAll *= 1 - p;
+    });
+    return any ? 1 - missAll : null;
+  }
+
+  function buildGroupProbabilityTable(roster, groupChoice, startYear, endYear) {
+    const years = [];
+    for (let year = startYear; year <= endYear; year++) years.push(year);
+    return years.map((year) => ({ year, probability: groupProbability(roster, year, groupChoice) }));
   }
 
   // ---------------------------------------------------------------------
@@ -827,7 +991,7 @@
         STORAGE_KEY,
         JSON.stringify({
           roster: activeRosterIsUploaded ? activeRoster : null,
-          target: groupTarget
+          groupChoice: groupChoice
         })
       );
     } catch (e) {
@@ -860,9 +1024,12 @@
     });
   }
 
-  let activeRoster = HUNTER_SEED;
+  // The table stays blank until a real roster exists - either uploaded
+  // via the Data tab or built up with "+ Add hunter" - so nobody mistakes
+  // placeholder data for their group's real numbers.
+  let activeRoster = [];
   let activeRosterIsUploaded = false;
-  let groupTarget = Object.assign({}, DEFAULT_GROUP_TARGET);
+  let groupChoice = JSON.parse(JSON.stringify(DEFAULT_GROUP_CHOICE));
 
   (function restorePersistedState() {
     const saved = loadPersistedState();
@@ -871,13 +1038,31 @@
       activeRoster = saved.roster;
       activeRosterIsUploaded = true;
     }
-    if (saved.target && getTrendSeries(saved.target)) {
-      groupTarget = saved.target;
+    if (isValidGroupChoice(saved.groupChoice)) {
+      groupChoice = saved.groupChoice;
     }
   })();
 
-  function setGroupTarget(next) {
-    groupTarget = Object.assign({}, groupTarget, next);
+  function setChoiceSlot(stage, index, field, value) {
+    const list = (groupChoice[stage] || []).slice();
+    if (field === "wmu" && !value) {
+      list[index] = null;
+    } else {
+      const current = list[index] || { wmu: "", mooseType: "", season: "" };
+      const slot = Object.assign({}, current);
+      if (field === "wmu") {
+        slot.wmu = value;
+        slot.mooseType = availableMooseTypes(value)[0] || "";
+        slot.season = availableSeasons(value, slot.mooseType)[0] || "";
+      } else if (field === "mooseType") {
+        slot.mooseType = value;
+        slot.season = availableSeasons(slot.wmu, value)[0] || "";
+      } else if (field === "season") {
+        slot.season = value;
+      }
+      list[index] = slot;
+    }
+    groupChoice = Object.assign({}, groupChoice, { [stage]: list });
     persistState();
     render();
   }
@@ -987,6 +1172,19 @@
       head.innerHTML = `<th>${cols.name}</th><th>${cols.year}</th><th>${cols.points}</th><th>${cols.tag}</th><th>${cols.claimed}</th><th>${cols.northern}</th><th></th>`;
     }
 
+    const empty = document.getElementById("rosterEmpty");
+    const wrap = document.getElementById("rosterWrap");
+    const isEmpty = activeRoster.length === 0;
+    if (empty) {
+      empty.hidden = !isEmpty;
+      if (isEmpty) empty.textContent = t("rosterEmptyState");
+    }
+    if (wrap) wrap.hidden = isEmpty;
+    if (isEmpty) {
+      body.innerHTML = "";
+      return;
+    }
+
     body.innerHTML = "";
     activeRoster.forEach((hunter) => {
       hunter.pointsHistory.forEach((entry, idx) => {
@@ -1053,78 +1251,154 @@
 
   const FORECAST_SPAN_YEARS = 7; // years shown beyond the current year
 
-  function renderTargetSelector() {
-    const wmuSel = document.getElementById("targetWmu");
-    if (!wmuSel) return;
+  const CHOICE_ROWS = [
+    { stage: "primary", index: 0, labelKey: "choicePrimary1" },
+    { stage: "primary", index: 1, labelKey: "choicePrimary2" },
+    { stage: "primary", index: 2, labelKey: "choicePrimary3" },
+    { stage: "secondChance", index: 0, labelKey: "choiceSecond1" },
+    { stage: "secondChance", index: 1, labelKey: "choiceSecond2" },
+    { stage: "secondChance", index: 2, labelKey: "choiceSecond3" }
+  ];
+
+  function fillSelect(select, options, current, placeholder) {
+    select.innerHTML = "";
+    if (placeholder !== undefined) {
+      const o = document.createElement("option");
+      o.value = "";
+      o.textContent = placeholder;
+      select.appendChild(o);
+    }
+    options.forEach((opt) => {
+      const o = document.createElement("option");
+      o.value = opt;
+      o.textContent = opt;
+      select.appendChild(o);
+    });
+    select.value = options.includes(current) ? current : "";
+  }
+
+  function renderChoiceTable() {
+    const head = document.getElementById("choiceTableHead");
+    const body = document.getElementById("choiceBody");
+    if (!head || !body) return;
     const heading = document.getElementById("targetHeading");
     if (heading) heading.textContent = t("targetHeading");
     const desc = document.getElementById("targetDesc");
     if (desc) desc.textContent = t("targetDesc");
-    const setLabel = (id, key) => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = t(key);
-    };
-    setLabel("targetWmuLabel", "targetWmuLabel");
-    setLabel("targetTypeLabel", "targetTypeLabel");
-    setLabel("targetSeasonLabel", "targetSeasonLabel");
-    setLabel("targetStageLabel", "targetStageLabel");
-    setLabel("targetChoiceLabel", "targetChoiceLabel");
 
-    function fillSelect(select, options, current) {
-      select.innerHTML = "";
-      options.forEach((opt) => {
-        const o = document.createElement("option");
-        o.value = opt;
-        o.textContent = opt;
-        select.appendChild(o);
-      });
-      if (options.includes(current)) select.value = current;
-    }
+    const cols = t("choiceColumns");
+    head.innerHTML = `<th></th><th>${cols.wmu}</th><th>${cols.type}</th><th>${cols.season}</th><th></th>`;
 
-    const wmus = availableWMUs();
-    fillSelect(wmuSel, wmus, groupTarget.wmu);
-    const typeSel = document.getElementById("targetMooseType");
-    fillSelect(typeSel, availableMooseTypes(groupTarget.wmu), groupTarget.mooseType);
-    const seasonSel = document.getElementById("targetSeason");
-    fillSelect(seasonSel, availableSeasons(groupTarget.wmu, groupTarget.mooseType), groupTarget.season);
-    const stageSel = document.getElementById("targetStage");
-    fillSelect(stageSel, availableStages(groupTarget.wmu, groupTarget.mooseType, groupTarget.season), groupTarget.stage);
-    const choiceSel = document.getElementById("targetChoice");
-    fillSelect(
-      choiceSel,
-      availableChoices(groupTarget.wmu, groupTarget.mooseType, groupTarget.season, groupTarget.stage),
-      groupTarget.choice
-    );
+    body.innerHTML = "";
+    let lastStage = null;
+    CHOICE_ROWS.forEach((row) => {
+      if (row.stage !== lastStage) {
+        lastStage = row.stage;
+        const sectionRow = document.createElement("tr");
+        sectionRow.className = "choice-section-row";
+        const td = document.createElement("td");
+        td.colSpan = 5;
+        td.textContent = t(row.stage === "primary" ? "choiceSectionPrimary" : "choiceSectionSecond");
+        sectionRow.appendChild(td);
+        body.appendChild(sectionRow);
+      }
 
-    const warning = document.getElementById("targetNoData");
-    if (warning) {
-      const hasData = !!getTrendSeries(groupTarget);
-      warning.hidden = hasData;
-      if (!hasData) warning.textContent = t("targetNoData");
-    }
+      const slot = (groupChoice[row.stage] || [])[row.index];
+      const tr = document.createElement("tr");
+      const labelCell = document.createElement("td");
+      labelCell.className = "choice-label";
+      labelCell.textContent = t(row.labelKey);
+      tr.appendChild(labelCell);
+
+      const wmuCell = document.createElement("td");
+      const wmuSel = document.createElement("select");
+      wmuSel.dataset.action = "edit-choice";
+      wmuSel.dataset.stage = row.stage;
+      wmuSel.dataset.index = String(row.index);
+      wmuSel.dataset.field = "wmu";
+      fillSelect(wmuSel, availableWMUs(), slot ? slot.wmu : "", t("choiceNone"));
+      wmuCell.appendChild(wmuSel);
+      tr.appendChild(wmuCell);
+
+      const typeCell = document.createElement("td");
+      const typeSel = document.createElement("select");
+      typeSel.dataset.action = "edit-choice";
+      typeSel.dataset.stage = row.stage;
+      typeSel.dataset.index = String(row.index);
+      typeSel.dataset.field = "mooseType";
+      typeSel.disabled = !slot;
+      fillSelect(typeSel, slot ? availableMooseTypes(slot.wmu) : [], slot ? slot.mooseType : "");
+      typeCell.appendChild(typeSel);
+      tr.appendChild(typeCell);
+
+      const seasonCell = document.createElement("td");
+      const seasonSel = document.createElement("select");
+      seasonSel.dataset.action = "edit-choice";
+      seasonSel.dataset.stage = row.stage;
+      seasonSel.dataset.index = String(row.index);
+      seasonSel.dataset.field = "season";
+      seasonSel.disabled = !slot;
+      fillSelect(seasonSel, slot ? availableSeasons(slot.wmu, slot.mooseType) : [], slot ? slot.season : "");
+      seasonCell.appendChild(seasonSel);
+      tr.appendChild(seasonCell);
+
+      const warnCell = document.createElement("td");
+      warnCell.className = "choice-nodata";
+      if (slot && !slotTrend({ stage: row.stage === "primary" ? "Primary" : "Second Chance", choice: String(row.index + 1), slot })) {
+        warnCell.textContent = t("choiceNoData");
+      }
+      tr.appendChild(warnCell);
+
+      body.appendChild(tr);
+    });
   }
 
-  function handleTargetFieldChange(field, value) {
-    const next = Object.assign({}, groupTarget, { [field]: value });
-    // Cascade: changing an upstream field resets everything downstream to
-    // its first available option, since the old choice may no longer exist
-    // for the new WMU/type/season/stage combination.
-    if (field === "wmu") {
-      next.mooseType = availableMooseTypes(next.wmu)[0];
-      next.season = availableSeasons(next.wmu, next.mooseType)[0];
-      next.stage = availableStages(next.wmu, next.mooseType, next.season)[0];
-      next.choice = availableChoices(next.wmu, next.mooseType, next.season, next.stage)[0];
-    } else if (field === "mooseType") {
-      next.season = availableSeasons(next.wmu, next.mooseType)[0];
-      next.stage = availableStages(next.wmu, next.mooseType, next.season)[0];
-      next.choice = availableChoices(next.wmu, next.mooseType, next.season, next.stage)[0];
-    } else if (field === "season") {
-      next.stage = availableStages(next.wmu, next.mooseType, next.season)[0];
-      next.choice = availableChoices(next.wmu, next.mooseType, next.season, next.stage)[0];
-    } else if (field === "stage") {
-      next.choice = availableChoices(next.wmu, next.mooseType, next.season, next.stage)[0];
+  function probabilityBand(p) {
+    if (p >= 0.66) return "prob-high";
+    if (p >= 0.33) return "prob-mid";
+    return "prob-low";
+  }
+
+  function renderProbabilityTable() {
+    const head = document.getElementById("probabilityTableHead");
+    const body = document.getElementById("probabilityBody");
+    if (!head || !body) return;
+    const heading = document.getElementById("probabilityHeading");
+    if (heading) heading.textContent = t("probabilityHeading");
+    const desc = document.getElementById("probabilityDesc");
+    if (desc) desc.textContent = t("probabilityDesc");
+
+    const currentYear = new Date().getFullYear();
+    const endYear = currentYear + FORECAST_SPAN_YEARS;
+    const cols = t("probabilityColumns");
+    head.innerHTML = `<th>${cols.year}</th><th>${cols.probability}</th>`;
+
+    body.innerHTML = "";
+    if (activeRoster.length === 0 || collectChoiceSlots(groupChoice).length === 0) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 2;
+      td.textContent = t("probabilityEmpty");
+      tr.appendChild(td);
+      body.appendChild(tr);
+      return;
     }
-    setGroupTarget(next);
+
+    const table = buildGroupProbabilityTable(activeRoster, groupChoice, currentYear, endYear);
+    table.forEach((row) => {
+      const tr = document.createElement("tr");
+      const yearCell = document.createElement("td");
+      yearCell.textContent = row.year;
+      const probCell = document.createElement("td");
+      if (row.probability === null) {
+        probCell.textContent = "–";
+      } else {
+        probCell.textContent = Math.round(row.probability * 100) + "%";
+        probCell.className = "prob-cell " + probabilityBand(row.probability);
+      }
+      tr.append(yearCell, probCell);
+      body.appendChild(tr);
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -1139,8 +1413,7 @@
   // one WMU/tag type/season/choice the group has chosen, never several
   // WMUs superimposed.
   // ---------------------------------------------------------------------
-  function buildGroupMatrix(roster, target, startYear, endYear) {
-    const trend = getTrendSeries(target);
+  function buildGroupMatrix(roster, groupChoice, startYear, endYear) {
     const years = [];
     for (let year = startYear; year <= endYear; year++) years.push(year);
 
@@ -1160,12 +1433,8 @@
         }
         if (last && year > last.year) {
           const points = projectedPoints(hunter, year, last.year);
-          let ready = false;
-          if (trend) {
-            const cutoff = projectCutoff(trend, year);
-            const eff = points + (isNorthernResident(hunter) ? NORTHERN_PREFERENCE_POINT : 0);
-            ready = drawProbability(eff, cutoff) >= 1;
-          }
+          const probability = hunterCombinedProbability(hunter, year, groupChoice);
+          const ready = probability !== null && probability >= 1;
           return { year, kind: "projected", points, ready };
         }
         return { year, kind: "empty" };
@@ -1185,11 +1454,25 @@
     const desc = document.getElementById("matrixDesc");
     if (desc) desc.textContent = t("matrixDesc");
 
+    const empty = document.getElementById("matrixEmpty");
+    const wrap = document.getElementById("matrixWrap");
+    const isEmpty = activeRoster.length === 0;
+    if (empty) {
+      empty.hidden = !isEmpty;
+      if (isEmpty) empty.textContent = t("matrixEmptyState");
+    }
+    if (wrap) wrap.hidden = isEmpty;
+    if (isEmpty) {
+      head.innerHTML = "";
+      body.innerHTML = "";
+      return;
+    }
+
     const currentYear = new Date().getFullYear();
     const historyYears = activeRoster.flatMap((h) => (h.pointsHistory || []).map((e) => e.year));
     const startYear = historyYears.length ? Math.min(currentYear, ...historyYears) : currentYear;
     const endYear = currentYear + FORECAST_SPAN_YEARS;
-    const matrix = buildGroupMatrix(activeRoster, groupTarget, startYear, endYear);
+    const matrix = buildGroupMatrix(activeRoster, groupChoice, startYear, endYear);
 
     const nameLabel = t("table").name;
     head.innerHTML =
@@ -1232,7 +1515,7 @@
     const status = document.getElementById("dataStatus");
     if (status) {
       const count = activeRoster.length;
-      status.textContent = activeRosterIsUploaded ? t("dataStatusUploaded", count) : t("dataStatusDemo", count);
+      status.textContent = count > 0 ? t("dataStatusUploaded", count) : t("dataStatusEmpty");
     }
     const exportBtn = document.getElementById("exportBtn");
     if (exportBtn) exportBtn.textContent = t("exportBtn");
@@ -1272,7 +1555,8 @@
     renderBanner();
     renderRules();
     renderRoster();
-    renderTargetSelector();
+    renderChoiceTable();
+    renderProbabilityTable();
     renderMatrix();
     renderDataStatus();
     renderTabs();
@@ -1334,15 +1618,8 @@
       updateEntryField(el.dataset.name, Number(el.dataset.idx), el.dataset.field, value);
       return;
     }
-    const targetFieldMap = {
-      targetWmu: "wmu",
-      targetMooseType: "mooseType",
-      targetSeason: "season",
-      targetStage: "stage",
-      targetChoice: "choice"
-    };
-    if (el.id && targetFieldMap[el.id]) {
-      handleTargetFieldChange(targetFieldMap[el.id], el.value);
+    if (el.dataset.action === "edit-choice") {
+      setChoiceSlot(el.dataset.stage, Number(el.dataset.index), el.dataset.field, el.value);
     }
   }
 
@@ -1394,9 +1671,9 @@
       isRosterUploaded: () => activeRosterIsUploaded,
       NORTHERN_PREFERENCE_POINT,
       MOOSE_TRENDS,
-      DEFAULT_GROUP_TARGET,
-      getGroupTarget: () => groupTarget,
-      setGroupTarget,
+      DEFAULT_GROUP_CHOICE,
+      getGroupChoice: () => groupChoice,
+      setChoiceSlot,
       getTrendSeries,
       availableWMUs,
       availableMooseTypes,
@@ -1407,6 +1684,10 @@
       drawProbability,
       buildHunterForecast,
       computeGroupStaggering,
+      collectChoiceSlots,
+      hunterCombinedProbability,
+      groupProbability,
+      buildGroupProbabilityTable,
       buildGroupMatrix,
       renderMatrix,
       updateEntryField,

@@ -113,13 +113,15 @@ check("addHunterNamed adds a new hunter with a single current-year entry, and ig
   assert.strictEqual(APP.getActiveRoster().length, before + 1, "blank name should not add a hunter");
 });
 
-check("editing a roster field marks it as uploaded, so demo-data status no longer shows", () => {
+check("editing a roster field marks it as uploaded, so the blank/empty state no longer shows", () => {
   const dom = freshApp();
   const APP = dom.window.APP;
   assert.strictEqual(APP.isRosterUploaded(), false);
-  const first = APP.getActiveRoster()[0];
-  APP.updateEntryField(first.name, 0, "points", "99");
+  APP.loadRoster([{ name: "Seed", pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false, northernResident: false }] }]);
+  APP.updateEntryField("Seed", 0, "points", "99");
   assert.strictEqual(APP.isRosterUploaded(), true);
+  const hunter = APP.getActiveRoster().find((h) => h.name === "Seed");
+  assert.strictEqual(hunter.pointsHistory[0].points, 99);
 });
 
 check("an uploaded/edited roster persists to localStorage as valid, round-trippable state", () => {
@@ -130,12 +132,16 @@ check("an uploaded/edited roster persists to localStorage as valid, round-trippa
   assert.ok(raw, "state should be saved to localStorage");
   const saved = JSON.parse(raw);
   assert.strictEqual(saved.roster[0].name, "Persisted");
-  assert.deepStrictEqual(saved.target, { wmu: "24", mooseType: "Bull", season: "Gun", stage: "Primary", choice: "1" });
+  assert.deepStrictEqual(saved.groupChoice, {
+    primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null],
+    secondChance: [null, null, null]
+  });
 });
 
 check("a roster saved in localStorage is restored automatically when the app loads again (simulated reload)", () => {
   const seedRoster = [{ name: "Restored Hunter", pointsHistory: [{ year: 2026, points: 6, tagType: null, claimed: false, northernResident: true }] }];
-  const seedState = JSON.stringify({ roster: seedRoster, target: { wmu: "28", mooseType: "Bull", season: "Gun", stage: "Primary", choice: "1" } });
+  const seedChoice = { primary: [{ wmu: "28", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
+  const seedState = JSON.stringify({ roster: seedRoster, groupChoice: seedChoice });
 
   const dom = new JSDOM(html, {
     runScripts: "dangerously",
@@ -152,11 +158,11 @@ check("a roster saved in localStorage is restored automatically when the app loa
   assert.strictEqual(restoredRoster.length, 1);
   assert.strictEqual(restoredRoster[0].name, "Restored Hunter");
   assert.strictEqual(dom.window.APP.isRosterUploaded(), true);
-  assert.strictEqual(dom.window.APP.getGroupTarget().wmu, "28", "the saved group target should restore too");
+  assert.strictEqual(dom.window.APP.getGroupChoice().primary[0].wmu, "28", "the saved group choice should restore too");
 });
 
-check("a saved target with no matching trend data is ignored, falling back to the default target", () => {
-  const seedState = JSON.stringify({ roster: null, target: { wmu: "nonexistent", mooseType: "Bull", season: "Gun", stage: "Primary", choice: "1" } });
+check("a saved groupChoice with the wrong shape is ignored, falling back to the default", () => {
+  const seedState = JSON.stringify({ roster: null, groupChoice: { primary: "not-an-array" } });
   const dom = new JSDOM(html, {
     runScripts: "dangerously",
     url: "http://localhost/",
@@ -164,7 +170,7 @@ check("a saved target with no matching trend data is ignored, falling back to th
       window.localStorage.setItem("mooseTrackerState_v1", seedState);
     }
   });
-  assert.deepStrictEqual(dom.window.APP.getGroupTarget(), dom.window.APP.DEFAULT_GROUP_TARGET);
+  assert.deepStrictEqual(dom.window.APP.getGroupChoice(), dom.window.APP.DEFAULT_GROUP_CHOICE);
 });
 
 check("exportRoster is wired to the export button and calls into XLSX when present (smoke test)", () => {

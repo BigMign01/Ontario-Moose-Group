@@ -140,8 +140,22 @@ check("renderRules renders a card in the DOM for ruleAllocation2027", () => {
   assert.ok(card.querySelector("h3").textContent.length > 0);
 });
 
-check("renderRoster renders one editable row per pointsHistory entry plus an add-year row per hunter, including Alex's 2026 claimed row", () => {
+check("before any upload, the roster is empty and the table shows a blank/empty state, not demo data", () => {
   APP.render();
+  assert.strictEqual(APP.isRosterUploaded(), false);
+  assert.strictEqual(APP.getActiveRoster().length, 0);
+  assert.strictEqual(win.document.querySelectorAll("#rosterBody tr").length, 0);
+  assert.strictEqual(win.document.getElementById("rosterEmpty").hidden, false);
+  assert.strictEqual(win.document.getElementById("rosterWrap").hidden, true);
+  const status = win.document.getElementById("dataStatus").textContent;
+  assert.ok(/no roster/i.test(status), "data status should say no roster loaded, never demo data");
+});
+
+check("renderRoster renders one editable row per pointsHistory entry plus an add-year row per hunter, including Alex's 2026 claimed row", () => {
+  APP.loadRoster(JSON.parse(JSON.stringify(APP.HUNTER_SEED)));
+  APP.render();
+  assert.strictEqual(win.document.getElementById("rosterEmpty").hidden, true);
+  assert.strictEqual(win.document.getElementById("rosterWrap").hidden, false);
   const allRows = win.document.querySelectorAll("#rosterBody tr");
   const totalEntries = APP.HUNTER_SEED.reduce((sum, h) => sum + h.pointsHistory.length, 0);
   assert.strictEqual(allRows.length, totalEntries + APP.HUNTER_SEED.length, "one row per entry plus one add-year row per hunter");
@@ -159,11 +173,6 @@ check("setLang('fr') swaps rendered rule text to French", () => {
   const card = win.document.querySelector('[data-rule="ruleWatch"]');
   assert.strictEqual(card.querySelector("h3").textContent, APP.I18N.fr.ruleWatch.h);
   APP.setLang("en");
-});
-
-check("before any upload, the roster is the demo HUNTER_SEED data, not marked as uploaded", () => {
-  assert.strictEqual(APP.isRosterUploaded(), false);
-  assert.strictEqual(APP.getActiveRoster(), APP.HUNTER_SEED);
 });
 
 check("loadRoster() swaps the active roster, marks it as uploaded, and re-renders (run last: mutates shared app state)", () => {

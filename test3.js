@@ -134,18 +134,83 @@ check("computeGroupStaggering's cutoff moves with the fitted trend instead of st
   assert.ok(unique.size > 1, "a real trend-based cutoff must vary year to year, unlike a hand-set flat MPR constant");
 });
 
-check("default group target resolves to real trend data out of the box (WMU 24 bull/gun/primary)", () => {
-  const target = APP.getGroupTarget();
-  assert.deepStrictEqual(target, APP.DEFAULT_GROUP_TARGET);
-  assert.ok(APP.getTrendSeries(target), "the default target must have data, or the app opens with an empty forecast");
+check("default group choice resolves to real trend data out of the box (Primary choice 1 = WMU 24 bull/gun)", () => {
+  const gc = APP.getGroupChoice();
+  assert.deepStrictEqual(gc, APP.DEFAULT_GROUP_CHOICE);
+  const slots = APP.collectChoiceSlots(gc);
+  assert.strictEqual(slots.length, 1);
+  assert.strictEqual(slots[0].stage, "Primary");
+  assert.strictEqual(slots[0].choice, "1");
 });
 
-check("setGroupTarget updates state and re-renders the forecast for the new target", () => {
-  const before = APP.getGroupTarget();
-  assert.strictEqual(before.wmu, "24");
-  APP.setGroupTarget({ wmu: "28" });
-  assert.strictEqual(APP.getGroupTarget().wmu, "28");
-  APP.setGroupTarget({ wmu: "24" }); // restore default for any later checks in this process
+check("setChoiceSlot fills a slot, cascades WMU->type->season, and can clear a slot back to null", () => {
+  APP.setChoiceSlot("primary", 1, "wmu", "28");
+  let gc = APP.getGroupChoice();
+  assert.strictEqual(gc.primary[1].wmu, "28");
+  assert.ok(gc.primary[1].mooseType, "picking a WMU should auto-fill a valid tag type");
+  assert.ok(gc.primary[1].season, "picking a WMU should auto-fill a valid season");
+
+  APP.setChoiceSlot("primary", 1, "wmu", "");
+  gc = APP.getGroupChoice();
+  assert.strictEqual(gc.primary[1], null, "clearing the WMU clears the whole slot");
+});
+
+check("collectChoiceSlots only returns filled slots, across both Primary and Second Chance", () => {
+  APP.setChoiceSlot("secondChance", 0, "wmu", "24");
+  APP.setChoiceSlot("secondChance", 0, "mooseType", "Calf");
+  APP.setChoiceSlot("secondChance", 0, "season", "All Seasons");
+  const slots = APP.collectChoiceSlots(APP.getGroupChoice());
+  assert.strictEqual(slots.length, 2, "Primary choice 1 (default) plus the new Second Chance choice 1");
+  assert.ok(slots.some((s) => s.stage === "Second Chance" && s.choice === "1"));
+  // restore default for later checks
+  APP.setChoiceSlot("secondChance", 0, "wmu", "");
+});
+
+check("hunterCombinedProbability combines multiple filled slots as an OR (any slot succeeding is enough)", () => {
+  // Two real WMUs with resolvable trends - the OR-combination should never do worse than one alone.
+  const real = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
+  const realTwo = {
+    primary: [
+      { wmu: "24", mooseType: "Bull", season: "Gun" },
+      { wmu: "28", mooseType: "Bull", season: "Gun" }
+    ],
+    secondChance: [null, null, null]
+  };
+  const readyHunter = { name: "Multi", pointsHistory: [{ year: 2026, points: 11, tagType: null, claimed: false, northernResident: false }] };
+  const pOne = APP.hunterCombinedProbability(readyHunter, 2026, real);
+  const pTwo = APP.hunterCombinedProbability(readyHunter, 2026, realTwo);
+  assert.ok(pOne !== null && pTwo !== null);
+  assert.ok(pTwo >= pOne, "adding a second slot should never lower the combined probability");
+});
+
+check("hunterCombinedProbability returns null when no slots are filled or points are unknown", () => {
+  const hunter = { name: "Empty", pointsHistory: [] };
+  const empty = { primary: [null, null, null], secondChance: [null, null, null] };
+  assert.strictEqual(APP.hunterCombinedProbability(hunter, 2026, empty), null, "no filled slots -> null");
+  const real = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
+  assert.strictEqual(APP.hunterCombinedProbability(hunter, 2026, real), null, "no points history at all -> null");
+});
+
+check("groupProbability combines every hunter as an OR (the group succeeds if any one hunter does)", () => {
+  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
+  const readyHunter = { name: "Ready", pointsHistory: [{ year: 2026, points: 12, tagType: null, claimed: false, northernResident: false }] };
+  const farHunter = { name: "Far", pointsHistory: [{ year: 2026, points: 0, tagType: null, claimed: false, northernResident: false }] };
+  const soloGroup = APP.groupProbability([farHunter], 2026, target);
+  const pairGroup = APP.groupProbability([farHunter, readyHunter], 2026, target);
+  assert.ok(pairGroup > soloGroup, "adding a ready hunter should raise the group's odds");
+});
+
+check("buildGroupProbabilityTable returns one row per year and probabilities never exceed 1", () => {
+  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
+  const hunters = [{ name: "A", pointsHistory: [{ year: 2026, points: 5, tagType: null, claimed: false, northernResident: false }] }];
+  const table = APP.buildGroupProbabilityTable(hunters, target, 2026, 2030);
+  assert.strictEqual(table.length, 5);
+  table.forEach((row) => {
+    if (row.probability !== null) {
+      assert.ok(row.probability >= 0 && row.probability <= 1);
+    }
+  });
+  assert.ok(table[table.length - 1].probability >= table[0].probability, "odds should not decrease as points build up");
 });
 
 check("buildGroupMatrix: past years show actual points and tag result; future years show a plain projected number", () => {
@@ -156,8 +221,8 @@ check("buildGroupMatrix: past years show actual points and tag result; future ye
       { year: 2025, points: 0, tagType: "Bull", claimed: true, northernResident: false }
     ]
   };
-  const trend = [{ year: 2024, cutoff: 10 }, { year: 2025, cutoff: 10 }, { year: 2026, cutoff: 10 }, { year: 2027, cutoff: 10 }];
-  const matrix = APP.buildGroupMatrix([hunter], { wmu: "x", mooseType: "x", season: "x", stage: "x", choice: "x" }, 2023, 2027);
+  const groupChoice = { primary: [{ wmu: "x", mooseType: "x", season: "x" }, null, null], secondChance: [null, null, null] };
+  const matrix = APP.buildGroupMatrix([hunter], groupChoice, 2023, 2027);
   const cells = matrix.rows[0].cells;
   assert.strictEqual(cells[0].year, 2023);
   assert.strictEqual(cells[0].kind, "empty", "no history and before the earliest record");
@@ -174,33 +239,32 @@ check("buildGroupMatrix: past years show actual points and tag result; future ye
   assert.strictEqual(cells[4].points, 2);
 });
 
-check("buildGroupMatrix flags a projected cell 'ready' only once probability reaches 1 (never shows a percentage)", () => {
+check("buildGroupMatrix flags a projected cell 'ready' only once combined probability reaches 1 (never shows a percentage)", () => {
   const hunter = { name: "Ready Soon", pointsHistory: [{ year: 2026, points: 8, tagType: null, claimed: false, northernResident: false }] };
-  const flatTrend = [{ year: 2026, cutoff: 10 }, { year: 2027, cutoff: 10 }, { year: 2028, cutoff: 10 }];
-  const matrix = APP.buildGroupMatrix([hunter], { wmu: "x" }, 2026, 2028);
+  const noDataChoice = { primary: [{ wmu: "x", mooseType: "x", season: "x" }, null, null], secondChance: [null, null, null] };
+  const matrix = APP.buildGroupMatrix([hunter], noDataChoice, 2026, 2028);
   const cells = matrix.rows[0].cells;
   assert.strictEqual(cells[0].kind, "actual");
-  // no trend resolves for target {wmu:"x"} (no matching MOOSE_TRENDS path), so ready must default false
+  // no trend resolves for a made-up WMU/type/season, so ready must default false
   assert.strictEqual(cells[1].ready, false);
   assert.strictEqual(cells[2].ready, false);
 });
 
 check("buildGroupMatrix highlights 'ready' using the real WMU24 bull trend once projected points clear the cutoff", () => {
   const hunter = { name: "Nearly There", pointsHistory: [{ year: 2026, points: 11, tagType: null, claimed: false, northernResident: false }] };
-  const target = { wmu: "24", mooseType: "Bull", season: "Gun", stage: "Primary", choice: "1" };
-  const matrix = APP.buildGroupMatrix([hunter], target, 2026, 2028);
+  const groupChoice = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
+  const matrix = APP.buildGroupMatrix([hunter], groupChoice, 2026, 2028);
   const cells = matrix.rows[0].cells;
   // 2027 projected points = 12, that year's fitted cutoff is ~13 -> not ready yet
   assert.strictEqual(cells[1].points, 12);
   assert.strictEqual(cells[1].ready, false);
-  // 2028 projected points = 13, fitted cutoff ~13.4 -> still just short
   // confirm ready is a plain boolean either way, never a numeric probability
   assert.strictEqual(typeof cells[2].ready, "boolean");
 });
 
-check("renderMatrix populates the matrix table with one row per hunter and one column per year", () => {
+check("renderMatrix populates the matrix table with one row per hunter and one column per year, once a roster is loaded", () => {
   const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/" });
-  dom.window.APP.render();
+  dom.window.APP.loadRoster(JSON.parse(JSON.stringify(dom.window.APP.HUNTER_SEED)));
   const doc = dom.window.document;
   const rows = doc.querySelectorAll("#matrixBody tr");
   assert.strictEqual(rows.length, dom.window.APP.HUNTER_SEED.length);
@@ -209,16 +273,15 @@ check("renderMatrix populates the matrix table with one row per hunter and one c
   assert.ok(headCells.length > 8, "should include past history years plus the projected span");
 });
 
-check("renderTargetSelector populates all five target dropdowns for the default target", () => {
+check("renderChoiceTable renders 6 rows (Primary 1-3, Second Chance 1-3) with the default slot pre-filled", () => {
   const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/" });
   dom.window.APP.render();
   const doc = dom.window.document;
-  assert.strictEqual(doc.getElementById("targetWmu").value, "24");
-  assert.strictEqual(doc.getElementById("targetMooseType").value, "Bull");
-  assert.strictEqual(doc.getElementById("targetSeason").value, "Gun");
-  assert.strictEqual(doc.getElementById("targetStage").value, "Primary");
-  assert.strictEqual(doc.getElementById("targetChoice").value, "1");
-  assert.ok(doc.getElementById("targetWmu").options.length > 30);
+  const selects = doc.querySelectorAll('#choiceBody select[data-field="wmu"]');
+  assert.strictEqual(selects.length, 6, "one WMU select per choice slot");
+  assert.strictEqual(selects[0].value, "24", "Primary choice 1 defaults to WMU 24");
+  assert.strictEqual(selects[1].value, "", "Primary choice 2 starts empty");
+  assert.ok(selects[0].options.length > 30);
 });
 
 console.log(`\n${passed} passed (test3.js)`);
