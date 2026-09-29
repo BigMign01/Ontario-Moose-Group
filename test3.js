@@ -126,15 +126,32 @@ check("default group choice resolves to real trend data out of the box (Primary 
 });
 
 check("setChoiceSlot fills a slot, cascades WMU->type->season, and can clear a slot back to null", () => {
-  APP.setChoiceSlot("primary", 1, "wmu", "28");
+  APP.setChoiceSlot("primary", 1, "wmu", "24");
   let gc = APP.getGroupChoice();
-  assert.strictEqual(gc.primary[1].wmu, "28");
-  assert.ok(gc.primary[1].mooseType, "picking a WMU should auto-fill a valid tag type");
-  assert.ok(gc.primary[1].season, "picking a WMU should auto-fill a valid season");
+  assert.strictEqual(gc.primary[1].wmu, "24");
+  assert.strictEqual(gc.primary[1].mooseType, "Calf", "only a type MNR has a Primary 2 cutoff for is auto-filled");
+  assert.strictEqual(gc.primary[1].season, "All Seasons");
 
   APP.setChoiceSlot("primary", 1, "wmu", "");
   gc = APP.getGroupChoice();
   assert.strictEqual(gc.primary[1], null, "clearing the WMU clears the whole slot");
+});
+
+check("Group Choice menus only offer combinations MNR has a cutoff for in that draw slot", () => {
+  const p1 = { stage: "Primary", choice: "1" };
+  const p2 = { stage: "Primary", choice: "2" };
+  assert.ok(APP.availableMooseTypes("24", p1).includes("Cow/calf"));
+  assert.strictEqual(APP.availableMooseTypes("24", p2).join(","), "Calf", "WMU 24 Cow/calf has no Primary 2 cutoff");
+  assert.strictEqual(APP.availableWMUs({ stage: "Second Chance", choice: "2" }).length, 0, "no WMU has Second Chance 2 cutoffs");
+  assert.ok(APP.availableWMUs(p1).length > 30);
+});
+
+check("renderChoiceTable explains a choice MNR never publishes cutoffs for", () => {
+  const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/" });
+  dom.window.APP.render();
+  const warnings = [...dom.window.document.querySelectorAll("#choiceBody .choice-nodata")].map((td) => td.textContent);
+  assert.strictEqual(warnings[4], dom.window.APP.I18N.en.choiceNoSlotData, "Second Chance choice 2");
+  assert.strictEqual(warnings[1], "", "Primary choice 2 has data somewhere, so no warning until a bad pick");
 });
 
 check("collectChoiceSlots only returns filled slots, across both Primary and Second Chance", () => {
