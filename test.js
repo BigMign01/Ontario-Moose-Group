@@ -26,7 +26,7 @@ check("window.APP is exposed with expected members", () => {
   assert.ok(APP.I18N && APP.I18N.en && APP.I18N.fr, "I18N.en/I18N.fr must exist");
   assert.strictEqual(typeof APP.t, "function");
   assert.strictEqual(typeof APP.getSeasonPhase, "function");
-  assert.strictEqual(typeof APP.computeTimeline, "function");
+  assert.strictEqual(typeof APP.computeHunterPoints, "function");
   assert.strictEqual(APP.NORTHERN_PREFERENCE_POINT, 1);
 });
 
@@ -70,44 +70,30 @@ check("HUNTER_SEED has the expected shape", () => {
     assert.ok(Array.isArray(hunter.pointsHistory));
     hunter.pointsHistory.forEach((entry) => {
       assert.strictEqual(typeof entry.year, "number");
-      assert.strictEqual(typeof entry.points, "number");
+      assert.ok(entry.points === null || typeof entry.points === "number");
       assert.strictEqual(typeof entry.claimed, "boolean");
     });
   });
 });
 
-check("Alex's 2026 entry reflects the claimed Cow/calf tag with points reset to 0 (primary / 2nd-chance 1st-choice case)", () => {
+check("Alex's 2026 entry is a claimed Cow/calf tag drawn with his pre-draw points (the reset shows the year after)", () => {
   const alex = APP.HUNTER_SEED.find((h) => h.name === "Alex");
   assert.ok(alex, "Alex should be in HUNTER_SEED");
   const entry2026 = alex.pointsHistory.find((e) => e.year === 2026);
   assert.ok(entry2026, "Alex should have a 2026 entry");
   assert.strictEqual(entry2026.tagType, "Cow/calf");
   assert.strictEqual(entry2026.claimed, true);
-  assert.strictEqual(entry2026.points, 0);
+  assert.strictEqual(entry2026.points, 4);
+  assert.strictEqual(APP.computeHunterPoints(alex, 2026).nextPool, 0, "0 going into 2027");
 });
 
-check("computeTimeline applies NORTHERN_PREFERENCE_POINT to MPR only for northernResident hunters, not to banked points", () => {
-  const hunters = [
-    { name: "A", northernResident: true, pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false }] },
-    { name: "B", northernResident: false, pointsHistory: [{ year: 2026, points: 5, tagType: null, claimed: false }] }
-  ];
-  const timeline = APP.computeTimeline(hunters);
-  const a = timeline.find((h) => h.name === "A");
-  const b = timeline.find((h) => h.name === "B");
-  assert.strictEqual(a.banked, 3);
-  assert.strictEqual(a.mpr, 3 + APP.NORTHERN_PREFERENCE_POINT, "northernResident hunter gets the bonus in MPR only");
-  assert.strictEqual(b.banked, 5);
-  assert.strictEqual(b.mpr, 5, "non-northernResident hunter gets no bonus");
-  assert.strictEqual(timeline[0].name, "B", "B's unboosted 5 still outranks A's boosted 4");
-});
-
-check("computeTimeline gives no Northern bonus when northernResident is absent or false for everyone", () => {
-  const hunters = [
-    { name: "A", pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false }] },
-    { name: "B", northernResident: false, pointsHistory: [{ year: 2026, points: 3, tagType: null, claimed: false }] }
-  ];
-  const timeline = APP.computeTimeline(hunters);
-  timeline.forEach((h) => assert.strictEqual(h.mpr, h.banked));
+check("the Northern Resident point is added to a Northern hunter's total every year, so it never shows 0", () => {
+  const rows = [{ year: 2025, points: 5, tagType: "Bull", claimed: true }, { year: 2026, points: 0 }];
+  const north = APP.computeHunterPoints({ name: "N", northernResident: true, pointsHistory: rows }, 2026);
+  const south = APP.computeHunterPoints({ name: "S", pointsHistory: rows }, 2026);
+  assert.deepStrictEqual(north.years.map((y) => y.total).join(","), "6,1");
+  assert.deepStrictEqual(south.years.map((y) => y.total).join(","), "5,0");
+  assert.strictEqual(north.years[1].pool, 0, "the bonus sits on top of the calculated points, it isn't banked");
 });
 
 check("parseRosterRows treats NorthernResident as a per-hunter attribute: any Y row marks the whole hunter, it doesn't reset on later rows", () => {
@@ -131,6 +117,24 @@ check("parseRosterRows treats NorthernResident as a per-hunter attribute: any Y 
   assert.strictEqual(amy.pointsHistory[0].tagType, "Bull");
   assert.strictEqual(amy.pointsHistory[0].claimed, true);
   assert.strictEqual(amy.northernResident, false);
+});
+
+check("parseRosterRows reads Draw, Applied (blank = applied) and BirthYear (per hunter), and keeps rows with no Points", () => {
+  const rows = [
+    { Hunter: "Old", Year: 2024, Points: 3, BirthYear: 1955, Applied: "" },
+    { Hunter: "Old", Year: 2025, Points: null, Applied: "N" },
+    { Hunter: "Old", Year: 2026, TagType: "Calf", Claimed: "Y", Draw: "Second Chance 2" },
+    { Hunter: "Young", Year: 2026, Points: 1, BirthYear: "not a year" }
+  ];
+  const roster = APP.parseRosterRows(rows);
+  const old = roster.find((h) => h.name === "Old");
+  assert.strictEqual(old.birthYear, 1955);
+  assert.strictEqual(old.pointsHistory.length, 3, "a row without Points is still a year of history");
+  assert.strictEqual(old.pointsHistory[0].applied, true);
+  assert.strictEqual(old.pointsHistory[1].applied, false);
+  assert.strictEqual(old.pointsHistory[1].points, null);
+  assert.strictEqual(old.pointsHistory[2].draw, "Second Chance 2");
+  assert.strictEqual(roster.find((h) => h.name === "Young").birthYear, null);
 });
 
 check("renderRules renders a card in the DOM for ruleAllocation2027", () => {

@@ -27,9 +27,10 @@ check("rosterToRows is the inverse of parseRosterRows (round-trips through both)
     {
       name: "Zed",
       northernResident: true,
+      birthYear: 1961,
       pointsHistory: [
-        { year: 2025, points: 4, tagType: null, claimed: false, wmu: "24", season: "Gun", mooseType: "Bull" },
-        { year: 2026, points: 0, tagType: "Bull", claimed: true, wmu: "24", season: "Gun", mooseType: "Bull" }
+        { year: 2025, points: 4, tagType: null, claimed: false, applied: false, wmu: "24", season: "Gun", mooseType: "Bull" },
+        { year: 2026, points: 4, tagType: "Bull", claimed: true, draw: "Second Chance 2", wmu: "24", season: "Gun", mooseType: "Bull" }
       ]
     }
   ];
@@ -45,22 +46,12 @@ check("rosterToRows is the inverse of parseRosterRows (round-trips through both)
   assert.strictEqual(roundTripped.length, 1);
   assert.strictEqual(roundTripped[0].name, "Zed");
   assert.strictEqual(roundTripped[0].northernResident, true);
-  const expected = [[2025, 4, false], [2026, 0, true]];
+  assert.strictEqual(roundTripped[0].birthYear, 1961);
+  assert.strictEqual(rows[0].Applied, "N");
+  const expected = ["2025|4|false|false|", "2026|4|true|true|Second Chance 2"];
   roundTripped[0].pointsHistory.forEach((e, i) => {
-    assert.deepStrictEqual([e.year, e.points, e.claimed], expected[i]);
+    assert.strictEqual([e.year, e.points, e.claimed, e.applied, e.draw || ""].join("|"), expected[i]);
   });
-});
-
-check("buildPointsSeries returns real history up to the current year plus a forward projection", () => {
-  const dom = freshApp();
-  const APP = dom.window.APP;
-  const roster = [
-    { name: "A", pointsHistory: [{ year: 2024, points: 2, tagType: null, claimed: false }, { year: 2025, points: 3, tagType: null, claimed: false }] }
-  ];
-  const series = APP.buildPointsSeries(roster, 2025, 2027);
-  assert.strictEqual(series[0].name, "A");
-  const byYear = Object.fromEntries(series[0].points.map((p) => [p.year, p.points]));
-  assert.deepStrictEqual(byYear, { 2024: 2, 2025: 3, 2026: 4, 2027: 5 });
 });
 
 check("updateEntryField edits a hunter's entry in place and re-sorts by year", () => {
@@ -95,7 +86,23 @@ check("addYearForHunter appends a new blank entry the year after the hunter's la
   const hunter = APP.getActiveRoster().find((h) => h.name === "Grower");
   assert.strictEqual(hunter.pointsHistory.length, 2);
   assert.strictEqual(hunter.pointsHistory[1].year, 2027);
-  assert.strictEqual(hunter.pointsHistory[1].points, 0);
+  assert.strictEqual(hunter.pointsHistory[1].points, null, "later years are calculated, so no Points is entered");
+  assert.strictEqual(hunter.pointsHistory[1].applied, true);
+});
+
+check("updateEntryField edits Applied, Draw and the hunter's birth year", () => {
+  const dom = freshApp();
+  const APP = dom.window.APP;
+  APP.loadRoster([{ name: "Ed", pointsHistory: [{ year: 2026, points: 5, tagType: "Calf", claimed: true }] }]);
+  APP.updateEntryField("Ed", 0, "applied", false);
+  APP.updateEntryField("Ed", 0, "draw", "Second Chance 3");
+  APP.updateEntryField("Ed", 0, "birthYear", "1958");
+  const hunter = APP.getActiveRoster().find((h) => h.name === "Ed");
+  assert.strictEqual(hunter.pointsHistory[0].applied, false);
+  assert.strictEqual(hunter.pointsHistory[0].draw, "Second Chance 3");
+  assert.strictEqual(hunter.birthYear, 1958);
+  APP.updateEntryField("Ed", 0, "birthYear", "");
+  assert.strictEqual(hunter.birthYear, null);
 });
 
 check("deleteEntry removes just the targeted entry", () => {

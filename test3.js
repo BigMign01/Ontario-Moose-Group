@@ -1,7 +1,7 @@
-// test3.js - forecast engine tests (projectCutoff, drawProbability, buildHunterForecast,
-// computeGroupStaggering, MOOSE_TRENDS/getTrendSeries). This replaces the old static
-// hand-set-MPR / deterministic pass-fail model with a trend fitted to real WMU draw
-// data (any WMU/tag type/season, not just WMU 24 bull) and a probability ramp.
+// test3.js - the points engine and tag forecast. Points are calculated
+// from claimed tags (not read from the sheet), future cutoffs are the latest
+// MNR cutoff held flat, and up to 2 tags a year go to the oldest qualifying
+// hunters.
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
@@ -22,6 +22,10 @@ function check(name, fn) {
   passed++;
   console.log("ok - " + name);
 }
+
+const BULL_24 = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
+const row = (year, points, extra) => Object.assign({ year, points, tagType: null, claimed: false }, extra || {});
+const cellAt = (matrix, name, year) => matrix.rows.find((r) => r.name === name).cells.find((c) => c.year === year);
 
 check("MOOSE_TRENDS holds real WMU 24 bull/gun/primary/1st-choice cutoffs for 2021-2025", () => {
   const series = APP.getTrendSeries({ wmu: "24", mooseType: "Bull", season: "Gun", stage: "Primary", choice: "1" });
@@ -52,86 +56,64 @@ check("availableMooseTypes/Seasons/Stages/Choices cascade correctly for a known 
   assert.strictEqual(APP.availableMooseTypes("does-not-exist").length, 0, "unknown WMU has no available moose types");
 });
 
-check("projectCutoff fits a known linear trend exactly", () => {
-  const trend = [
-    { year: 2020, cutoff: 1 },
-    { year: 2021, cutoff: 3 },
-    { year: 2022, cutoff: 5 }
-  ];
-  assert.strictEqual(APP.projectCutoff(trend, 2023), 7);
-  assert.strictEqual(APP.projectCutoff(trend, 2020), 1);
-});
 
-check("projectCutoff on the real WMU24 bull trend projects forward past the historical range", () => {
+check("cutoffForYear uses MNR's actual cutoff for years on record and holds the latest one flat after that", () => {
   const trend = APP.getTrendSeries({ wmu: "24", mooseType: "Bull", season: "Gun", stage: "Primary", choice: "1" });
-  const cutoff2028 = APP.projectCutoff(trend, 2028);
-  assert.ok(cutoff2028 > 12, "cutoff should keep climbing past 2025's observed 12");
-  assert.ok(Math.abs(cutoff2028 - 13.4) < 0.01);
+  assert.strictEqual(APP.cutoffForYear(trend, 2022), 10);
+  assert.strictEqual(APP.cutoffForYear(trend, 2025), 12);
+  assert.strictEqual(APP.cutoffForYear(trend, 2026), 12, "held flat, not extrapolated upward");
+  assert.strictEqual(APP.cutoffForYear(trend, 2035), 12);
+  assert.strictEqual(APP.cutoffForYear(trend, 2019), null, "no number before the data starts");
 });
 
-check("drawProbability is 0 well below cutoff, 1 at/above cutoff, and ramps linearly between", () => {
-  assert.strictEqual(APP.drawProbability(5, 12), 0);
-  assert.strictEqual(APP.drawProbability(10, 12), 0);
-  assert.strictEqual(APP.drawProbability(11, 12), 0.5);
-  assert.strictEqual(APP.drawProbability(12, 12), 1);
-  assert.strictEqual(APP.drawProbability(15, 12), 1, "points above cutoff still cap at 1, not overflow past 1");
+check("points count from claimed tags: the claim year keeps its points, the next year is 0, then +1 a year", () => {
+  const hunter = { name: "B", pointsHistory: [row(2021, 12), row(2022, 13, { tagType: "Bull", claimed: true }), row(2023, null), row(2024, null)] };
+  const c = APP.computeHunterPoints(hunter, 2026);
+  assert.strictEqual(c.years.map((y) => y.pool).join(","), "12,13,0,1");
+  assert.strictEqual(c.nextPool, 2);
 });
 
-check("buildHunterForecast projects a hunter's points forward and ramps probability with the trend", () => {
-  const hunter = { name: "Test", pointsHistory: [{ year: 2026, points: 8, tagType: null, claimed: false, northernResident: false }] };
-  const trend = [
-    { year: 2026, cutoff: 10 },
-    { year: 2027, cutoff: 10 },
-    { year: 2028, cutoff: 10 }
-  ];
-  const forecast = APP.buildHunterForecast(hunter, 2026, 2028, trend);
-  assert.strictEqual(forecast.length, 3);
-  assert.strictEqual(forecast[0].points, 8);
-  assert.strictEqual(forecast[0].probability, 0);
-  assert.strictEqual(forecast[1].points, 9);
-  assert.strictEqual(forecast[1].probability, 0.5);
-  assert.strictEqual(forecast[2].points, 10);
-  assert.strictEqual(forecast[2].probability, 1);
+check("only the first year's Points is used; later rows are calculated, and the sheet is flagged only where it breaks the rules", () => {
+  // Jason Roy's real shape: 1, then 0 with no claimed tag recorded, then +1 a year.
+  const hunter = { name: "J", pointsHistory: [row(2020, 1), row(2021, 0), row(2022, 1), row(2023, 2)] };
+  const c = APP.computeHunterPoints(hunter, 2026);
+  assert.strictEqual(c.years.map((y) => y.pool).join(","), "1,2,3,4", "calculated, not copied from the sheet");
+  assert.strictEqual(c.years.map((y) => y.mismatch).join(","), "false,true,false,false", "one flag, where the error is");
+  assert.strictEqual(c.years[1].expectedFromSheet, 2);
 });
 
-check("buildHunterForecast adds the Northern bonus to probability only, not to projected points", () => {
-  const hunter = { name: "North", northernResident: true, pointsHistory: [{ year: 2026, points: 9, tagType: null, claimed: false }] };
-  const trend = [{ year: 2026, cutoff: 10 }];
-  const forecast = APP.buildHunterForecast(hunter, 2026, 2026, trend);
-  assert.strictEqual(forecast[0].points, 9, "raw projected points exclude the bonus");
-  assert.strictEqual(forecast[0].probability, 1, "9 banked + 1 Northern bonus clears a cutoff of 10");
+check("an awarded but unclaimed tag doesn't reset points", () => {
+  const hunter = { name: "P", pointsHistory: [row(2026, 8, { tagType: "Cow/calf", claimed: false })] };
+  assert.strictEqual(APP.computeHunterPoints(hunter, 2026).nextPool, 9);
 });
 
-check("computeGroupStaggering flags a gap year when nobody is likely tag-ready", () => {
-  const hunters = [
-    { name: "A", pointsHistory: [{ year: 2026, points: 0, tagType: null, claimed: false }] },
-    { name: "B", pointsHistory: [{ year: 2026, points: 1, tagType: null, claimed: false }] }
-  ];
-  const trend = [{ year: 2026, cutoff: 12 }];
-  const staggering = APP.computeGroupStaggering(hunters, 2026, 2026, trend);
-  assert.strictEqual(staggering[0].status, "gap");
-  assert.strictEqual(staggering[0].expected, 0);
+check("a year marked Applied = N earns no point", () => {
+  const hunter = { name: "F", pointsHistory: [row(2024, 5), row(2025, null, { applied: false }), row(2026, null)] };
+  assert.strictEqual(APP.computeHunterPoints(hunter, 2026).years.map((y) => y.pool).join(","), "5,6,6");
 });
 
-check("computeGroupStaggering flags a stacked year when several hunters are likely ready at once", () => {
-  const hunters = [
-    { name: "A", pointsHistory: [{ year: 2026, points: 12, tagType: null, claimed: false }] },
-    { name: "B", pointsHistory: [{ year: 2026, points: 13, tagType: null, claimed: false }] }
-  ];
-  const trend = [{ year: 2026, cutoff: 12 }];
-  const staggering = APP.computeGroupStaggering(hunters, 2026, 2026, trend);
-  assert.strictEqual(staggering[0].status, "stacked");
-  assert.strictEqual(staggering[0].expected, 2);
+check("claimed tags from Second Chance choice 2 or 3 don't reset points; Primary and Second Chance 1 do", () => {
+  const after = (draw) =>
+    APP.computeHunterPoints({ name: "X", pointsHistory: [row(2026, 7, { tagType: "Calf", claimed: true, draw })] }, 2026).nextPool;
+  assert.strictEqual(after("Second Chance 2"), 8);
+  assert.strictEqual(after("SC3"), 8);
+  assert.strictEqual(after("Second Chance 1"), 0);
+  assert.strictEqual(after("Primary 2"), 0);
+  assert.strictEqual(after(null), 0, "blank Draw is assumed to reset");
 });
 
-check("computeGroupStaggering's cutoff moves with the fitted trend instead of staying flat across years", () => {
-  const trend = APP.getTrendSeries({ wmu: "24", mooseType: "Bull", season: "Gun", stage: "Primary", choice: "1" });
-  const staggering = APP.computeGroupStaggering(APP.HUNTER_SEED, 2021, 2025, trend);
-  const cutoffs = staggering.map((r) => r.cutoff);
-  const expected = [10.6, 11, 11.4, 11.8, 12.2];
-  cutoffs.forEach((c, i) => assert.ok(Math.abs(c - expected[i]) < 0.001, `year ${staggering[i].year}: ${c} ~= ${expected[i]}`));
-  const unique = new Set(cutoffs);
-  assert.ok(unique.size > 1, "a real trend-based cutoff must vary year to year, unlike a hand-set flat MPR constant");
+check("parseDraw understands the common ways of writing a draw", () => {
+  assert.strictEqual(JSON.stringify(APP.parseDraw("Primary 3")), JSON.stringify({ stage: "Primary", choice: "3" }));
+  assert.strictEqual(JSON.stringify(APP.parseDraw("2nd chance choice 3")), JSON.stringify({ stage: "Second Chance", choice: "3" }));
+  assert.strictEqual(JSON.stringify(APP.parseDraw("Deuxième chance 2")), JSON.stringify({ stage: "Second Chance", choice: "2" }));
+  assert.strictEqual(APP.parseDraw(""), null);
+});
+
+check("rows after the last history year aren't history yet and are ignored", () => {
+  const hunter = { name: "T", pointsHistory: [row(2026, 4), row(2027, 5), row(2028, 6)] };
+  const c = APP.computeHunterPoints(hunter, 2026);
+  assert.strictEqual(c.lastYear, 2026);
+  assert.strictEqual(c.nextPool, 5);
 });
 
 check("default group choice resolves to real trend data out of the box (Primary choice 1 = WMU 24 bull/gun)", () => {
@@ -166,193 +148,74 @@ check("collectChoiceSlots only returns filled slots, across both Primary and Sec
   APP.setChoiceSlot("secondChance", 0, "wmu", "");
 });
 
-check("combinedProbabilityForPoints combines multiple filled slots as an OR (any slot succeeding is enough)", () => {
-  const real = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
-  const realTwo = {
-    primary: [
-      { wmu: "24", mooseType: "Bull", season: "Gun" },
-      { wmu: "28", mooseType: "Bull", season: "Gun" }
-    ],
-    secondChance: [null, null, null]
-  };
-  const pOne = APP.combinedProbabilityForPoints(11, 2026, real);
-  const pTwo = APP.combinedProbabilityForPoints(11, 2026, realTwo);
-  assert.ok(pOne !== null && pTwo !== null);
-  assert.ok(pTwo >= pOne, "adding a second slot should never lower the combined probability");
-  const empty = { primary: [null, null, null], secondChance: [null, null, null] };
-  assert.strictEqual(APP.combinedProbabilityForPoints(11, 2026, empty), null, "no filled slots -> null");
+check("matrix: past cells show calculated points; the year after a real claimed tag starts at 0", () => {
+  const alex = { name: "Alex", pointsHistory: [row(2025, 8), row(2026, 9, { tagType: "Cow/calf", claimed: true })] };
+  const m = APP.buildGroupMatrix([alex], BULL_24, 2025, 2028, 2026);
+  assert.strictEqual(cellAt(m, "Alex", 2026).kind, "actual");
+  assert.strictEqual(cellAt(m, "Alex", 2026).points, 9);
+  assert.strictEqual(cellAt(m, "Alex", 2027).kind, "projected");
+  assert.strictEqual(cellAt(m, "Alex", 2027).points, 0);
+  assert.strictEqual(cellAt(m, "Alex", 2028).points, 1);
 });
 
-check("buildGroupProbabilityTable comes from the same simulation as the matrix: already-drawn years are null, resets are respected", () => {
-  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
-  // Claimed a tag on the latest row: the naive projection would give this
-  // hunter 9+N points; the simulation (correctly) restarts from 0.
-  const claimed = [{ name: "A", pointsHistory: [{ year: 2026, points: 12, tagType: "Bull", claimed: true }] }];
-  const table = APP.buildGroupProbabilityTable(claimed, target, 2026, 2030);
-  assert.strictEqual(table.length, 5);
-  assert.strictEqual(table[0].probability, null, "2026 is already drawn (real record) - no forecast");
-  table.slice(1).forEach((row) => assert.strictEqual(row.probability, 0, "restarting from 0 points can't reach a ~13 cutoff by 2030"));
+check("matrix: a hunter gets a predicted tag once their points reach the flat cutoff, then resets to 0", () => {
+  const carl = { name: "Carl", pointsHistory: [row(2026, 8)] };
+  const m = APP.buildGroupMatrix([carl], BULL_24, 2026, 2032, 2026);
+  // 9, 10, 11, 12 (= cutoff 12 in 2030) -> tag, then 0, 1
+  assert.strictEqual([2027, 2028, 2029, 2030, 2031, 2032].map((y) => cellAt(m, "Carl", y).points).join(","), "9,10,11,12,0,1");
+  assert.ok(cellAt(m, "Carl", 2030).tag, "tag in 2030");
+  assert.strictEqual(cellAt(m, "Carl", 2030).tag.stage, "Primary");
+  assert.strictEqual(m.yearStats.find((s) => s.year === 2030).tags.map((t) => t.name).join(","), "Carl");
 });
 
-check("buildGroupMatrix: past years show actual points and tag result; future years show a plain projected number", () => {
-  const hunter = {
-    name: "Test",
-    pointsHistory: [
-      { year: 2024, points: 5, tagType: null, claimed: false, northernResident: false },
-      { year: 2025, points: 0, tagType: "Bull", claimed: true, northernResident: false }
-    ]
-  };
-  const groupChoice = { primary: [{ wmu: "x", mooseType: "x", season: "x" }, null, null], secondChance: [null, null, null] };
-  const matrix = APP.buildGroupMatrix([hunter], groupChoice, 2023, 2027);
-  const cells = matrix.rows[0].cells;
-  assert.strictEqual(cells[0].year, 2023);
-  assert.strictEqual(cells[0].kind, "empty", "no history and before the earliest record");
-  assert.strictEqual(cells[1].kind, "actual");
-  assert.strictEqual(cells[1].points, 5);
-  assert.strictEqual(cells[1].tagType, null);
-  assert.strictEqual(cells[2].kind, "actual");
-  assert.strictEqual(cells[2].points, 0);
-  assert.strictEqual(cells[2].tagType, "Bull");
-  assert.strictEqual(cells[2].claimed, true);
-  assert.strictEqual(cells[3].kind, "projected", "2026: one year past the hunter's latest record");
-  assert.strictEqual(cells[3].points, 1);
-  assert.strictEqual(cells[4].kind, "projected");
-  assert.strictEqual(cells[4].points, 2);
-});
-
-check("buildGroupMatrix flags a projected cell 'ready' only once combined probability reaches 1 (never shows a percentage)", () => {
-  const hunter = { name: "Ready Soon", pointsHistory: [{ year: 2026, points: 8, tagType: null, claimed: false, northernResident: false }] };
-  const noDataChoice = { primary: [{ wmu: "x", mooseType: "x", season: "x" }, null, null], secondChance: [null, null, null] };
-  const matrix = APP.buildGroupMatrix([hunter], noDataChoice, 2026, 2028);
-  const cells = matrix.rows[0].cells;
-  assert.strictEqual(cells[0].kind, "actual");
-  // no trend resolves for a made-up WMU/type/season, so ready must default false
-  assert.strictEqual(cells[1].ready, false);
-  assert.strictEqual(cells[2].ready, false);
-});
-
-check("buildGroupMatrix highlights 'ready' using the real WMU24 bull trend once projected points clear the cutoff", () => {
-  const hunter = { name: "Nearly There", pointsHistory: [{ year: 2026, points: 11, tagType: null, claimed: false, northernResident: false }] };
-  const groupChoice = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
-  const matrix = APP.buildGroupMatrix([hunter], groupChoice, 2026, 2028);
-  const cells = matrix.rows[0].cells;
-  // 2027 projected points = 12, that year's fitted cutoff is ~13 -> not ready yet
-  assert.strictEqual(cells[1].points, 12);
-  assert.strictEqual(cells[1].ready, false);
-  // confirm ready is a plain boolean either way, never a numeric probability
-  assert.strictEqual(typeof cells[2].ready, "boolean");
-});
-
-check("pointsGoingForward treats a claimed tag on the latest row as a reset, even with no later row recording it", () => {
-  const claimed = { name: "Alex", pointsHistory: [{ year: 2026, points: 9, tagType: "Cow/calf", claimed: true, northernResident: false }] };
-  assert.strictEqual(APP.pointsGoingForward(claimed), 0, "a claimed tag resets points going into the next year");
-
-  const unclaimed = { name: "Building", pointsHistory: [{ year: 2026, points: 9, tagType: null, claimed: false, northernResident: false }] };
-  assert.strictEqual(APP.pointsGoingForward(unclaimed), 9, "no tag claimed - points carry forward as-is");
-
-  const noHistory = { name: "Blank", pointsHistory: [] };
-  assert.strictEqual(APP.pointsGoingForward(noHistory), 0);
-});
-
-check("buildGroupMatrix continues the simulation from 0 the year after a REAL claimed tag (not the raw recorded points)", () => {
-  // Exactly Alex's real shape: last actual row is 2026, points=9, but
-  // already claimed a Cow/calf tag that year. 2027's simulated points
-  // must start from 0+1=1, not 9+1=10.
-  const alex = { name: "Alex", pointsHistory: [{ year: 2026, points: 9, tagType: "Cow/calf", claimed: true, northernResident: false }] };
-  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
-  const matrix = APP.buildGroupMatrix([alex], target, 2026, 2029);
-  const cells = matrix.rows[0].cells;
-  assert.strictEqual(cells[0].kind, "actual");
-  assert.strictEqual(cells[0].points, 9);
-  assert.strictEqual(cells[0].tagType, "Cow/calf");
-  assert.strictEqual(cells[1].kind, "projected");
-  assert.strictEqual(cells[1].points, 1, "2027 restarts from 0, not from the claimed year's 9");
-  assert.strictEqual(cells[2].points, 2);
-  assert.strictEqual(cells[3].points, 3);
-});
-
-check("buildGroupMatrix resets a hunter's simulated points to 0 the year after they clear the cutoff (simulated tag year)", () => {
-  // Uses the real WMU24 bull/gun trend (fitted cutoff sequence from
-  // earlier tests: 2026≈12.6, 2027≈13, 2028≈13.4, 2029≈13.8) so the math
-  // is checked against genuine MOOSE_TRENDS data, not a synthetic stub.
-  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
-  // Fitted cutoff sequence (from earlier tests): 2026≈12.6, 2027≈13,
-  // 2028≈13.4, 2029≈13.8. Start a hunter at 11 banked points (2026).
-  const nearHunter = { name: "Solo", pointsHistory: [{ year: 2026, points: 11, tagType: null, claimed: false, northernResident: false }] };
-  const matrix = APP.buildGroupMatrix([nearHunter], target, 2026, 2032);
-  const cells = matrix.rows[0].cells;
-  // find the first cell that clears the cutoff (sequenceTag true)
-  const tagIdx = cells.findIndex((c) => c.sequenceTag);
-  assert.ok(tagIdx > 0, "the hunter should eventually earn a simulated tag");
-  assert.ok(cells[tagIdx].probability > 0);
-  const nextCell = cells[tagIdx + 1];
-  assert.ok(nextCell, "there should be a year after the tag year in this window");
-  assert.strictEqual(nextCell.points, 1, "points restart from 0+1 the year after a simulated tag");
-  assert.strictEqual(nextCell.sequenceTag, false, "the restart year is not itself a tag year");
-});
-
-check("buildGroupMatrix picks only one hunter as that year's tag holder when several would clear the cutoff, and clearly marks it", () => {
-  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
-  // Both hunters already at/above the 2026 fitted cutoff (~12.6), so both
-  // are "ready" the very first projected year - a guaranteed collision.
-  const hunterA = { name: "Ahigh", pointsHistory: [{ year: 2026, points: 20, tagType: null, claimed: false, northernResident: false }] };
-  const hunterB = { name: "Blow", pointsHistory: [{ year: 2026, points: 15, tagType: null, claimed: false, northernResident: false }] };
-  const matrix = APP.buildGroupMatrix([hunterA, hunterB], target, 2026, 2027);
-  const rowA = matrix.rows.find((r) => r.name === "Ahigh");
-  const rowB = matrix.rows.find((r) => r.name === "Blow");
-  // 2027 is the first projected year for both (2026 is their actual entry)
-  const cellA = rowA.cells.find((c) => c.year === 2027);
-  const cellB = rowB.cells.find((c) => c.year === 2027);
-  assert.strictEqual(cellA.ready, true);
-  assert.strictEqual(cellB.ready, true);
-  // both clear the cutoff, but only the higher-points hunter (Ahigh) is
-  // picked as this year's tag holder
-  assert.strictEqual(cellA.sequenceTag, true, "the hunter with more points wins the tie-break");
-  assert.strictEqual(cellB.sequenceTag, false, "the other ready hunter is not reset, even though they also cleared the cutoff");
-});
-
-check("tag holder: partial odds accumulate as 'tag credit' until they add up to a whole expected tag", () => {
-  // Real WMU24 bull/gun fitted cutoffs: 2027≈13, 2028≈13.4. Solo hunter at
-  // 11 in 2026 -> 12 in 2027 (odds 50%, not enough alone), 13 in 2028
-  // (odds 80%): credit 0.5 + 0.8 = 1.3 >= 1 -> tag in 2028, credit 0.3 left.
-  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
-  const solo = { name: "Solo", pointsHistory: [{ year: 2026, points: 11, tagType: null, claimed: false }] };
-  const m = APP.buildGroupMatrix([solo], target, 2026, 2029);
-  const stats = Object.fromEntries(m.yearStats.map((s) => [s.year, s]));
-  assert.strictEqual(stats[2026].projected, false, "2026 is a real record, not simulated");
-  assert.ok(Math.abs(stats[2027].expected - 0.5) < 0.05, "2027 expected tags ≈ 0.5");
-  assert.strictEqual(stats[2027].holder, null, "half a tag isn't a tag yet");
-  assert.ok(stats[2028].credit >= 1, "credit reaches a whole tag in 2028");
-  assert.strictEqual(stats[2028].holder, "Solo");
-  const cells = m.rows[0].cells;
-  assert.strictEqual(cells.find((c) => c.year === 2028).sequenceTag, true);
-  assert.strictEqual(cells.find((c) => c.year === 2029).points, 1, "points reset the year after the tag");
-});
-
-check("tag holder: when credit allows a tag, it goes to the hunter with the best odds that year, and only one per year", () => {
-  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
+check("matrix: at most 2 tags a year, oldest first regardless of points; no birth year goes last", () => {
   const hunters = [
-    { name: "Low", pointsHistory: [{ year: 2026, points: 11, tagType: null, claimed: false }] },
-    { name: "High", pointsHistory: [{ year: 2026, points: 12, tagType: null, claimed: false }] },
-    { name: "Mid", pointsHistory: [{ year: 2026, points: 11, tagType: null, claimed: false }] }
+    { name: "Young", birthYear: 1990, pointsHistory: [row(2026, 20)] },
+    { name: "Old", birthYear: 1950, pointsHistory: [row(2026, 12)] },
+    { name: "Mid", birthYear: 1970, pointsHistory: [row(2026, 12)] },
+    { name: "Unknown", pointsHistory: [row(2026, 30)] }
   ];
-  const m = APP.buildGroupMatrix(hunters, target, 2026, 2027);
-  // 2027: High 13 (odds 100%), Low/Mid 12 (50% each) -> expected 2, one tag.
-  const s2027 = m.yearStats.find((s) => s.year === 2027);
-  assert.strictEqual(s2027.holder, "High");
-  const tagged = m.rows.filter((r) => r.cells.find((c) => c.year === 2027).sequenceTag);
-  assert.strictEqual(tagged.length, 1, "at most one tag holder per year");
+  const m = APP.buildGroupMatrix(hunters, BULL_24, 2026, 2027, 2026);
+  assert.strictEqual(APP.MAX_TAGS_PER_YEAR, 2);
+  assert.strictEqual(m.yearStats.find((s) => s.year === 2027).tags.map((t) => t.name).join(","), "Old,Mid");
+  assert.strictEqual(cellAt(m, "Young", 2027).qualifies, true);
+  assert.strictEqual(cellAt(m, "Young", 2027).tag, null, "qualifies, but two older hunters took the tags");
+  assert.strictEqual(cellAt(m, "Young", 2027).points, 21);
 });
 
-check("tag holder: the Northern bonus counts toward odds and can decide who gets the tag", () => {
-  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
+check("matrix: the Northern point counts toward reaching the cutoff", () => {
   const hunters = [
-    { name: "Aaron", pointsHistory: [{ year: 2026, points: 11, tagType: null, claimed: false }] },
-    { name: "Zoe", northernResident: true, pointsHistory: [{ year: 2026, points: 11, tagType: null, claimed: false }] }
+    { name: "North", northernResident: true, pointsHistory: [row(2026, 10)] },
+    { name: "South", pointsHistory: [row(2026, 10)] }
   ];
-  const m = APP.buildGroupMatrix(hunters, target, 2026, 2027);
-  // Both 12 points in 2027; Zoe's +1 Northern bonus gives her the better odds.
-  assert.strictEqual(m.yearStats.find((s) => s.year === 2027).holder, "Zoe");
+  const m = APP.buildGroupMatrix(hunters, BULL_24, 2026, 2027, 2026);
+  assert.strictEqual(cellAt(m, "North", 2027).points, 12, "11 + Northern point");
+  assert.ok(cellAt(m, "North", 2027).tag);
+  assert.strictEqual(cellAt(m, "South", 2027).qualifies, false);
+});
+
+check("matrix: a hunter qualifies for the first Group Choice slot they reach, in draw order", () => {
+  const choice = {
+    primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null],
+    secondChance: [{ wmu: "24", mooseType: "Cow/calf", season: "Gun" }, null, null]
+  };
+  // 24 Cow/calf Gun Second Chance 1 latest cutoff is 10, bull primary 12.
+  const m = APP.buildGroupMatrix([{ name: "C", pointsHistory: [row(2026, 9)] }], choice, 2026, 2027, 2026);
+  const tag = cellAt(m, "C", 2027).tag;
+  assert.strictEqual(tag.mooseType, "Cow/calf");
+  assert.strictEqual(tag.stage, "Second Chance");
+  assert.strictEqual(m.cutoffRows.length, 2, "one cutoff row per slot");
+});
+
+check("tag timeline lists real tags (claimed or not) for past years and predicted tags after", () => {
+  const roster = [
+    { name: "Patrick", pointsHistory: [row(2026, 8, { tagType: "Cow/calf", claimed: false })] },
+    { name: "Carl", pointsHistory: [row(2026, 11)] }
+  ];
+  const tl = APP.buildTagTimeline(roster, BULL_24, 2026, 2027, 2026);
+  assert.strictEqual(tl[0].actual.length, 1);
+  assert.strictEqual(tl[0].actual[0].claimed, false);
+  assert.strictEqual(tl[1].predicted.map((t) => t.name).join(","), "Carl", "Carl reaches 12 in 2027");
 });
 
 check("sortMatrixRows sorts by hunter name and by any year column, ascending and descending", () => {
@@ -392,41 +255,29 @@ check("sortMatrixBy toggles direction on repeated clicks of the same column and 
   assert.strictEqual(firstRowName, "Zed", "descending name sort should put Zed first");
 });
 
-check("renderMatrix populates the matrix table with one row per hunter and one column per year, once a roster is loaded", () => {
+check("renderMatrix shows the cutoff row, a row per hunter, the mismatch flag and the missing-birth-year note", () => {
   const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/" });
-  dom.window.APP.loadRoster(JSON.parse(JSON.stringify(dom.window.APP.HUNTER_SEED)));
+  dom.window.APP.loadRoster([
+    { name: "Jason", pointsHistory: [row(2025, 1), row(2026, 0)] },
+    { name: "Old", birthYear: 1950, pointsHistory: [row(2026, 3)] }
+  ]);
   const doc = dom.window.document;
-  const rows = doc.querySelectorAll("#matrixBody tr:not(.matrix-cutoff-row)");
-  assert.strictEqual(rows.length, dom.window.APP.HUNTER_SEED.length);
-  const headCells = doc.querySelectorAll("#matrixTableHead th");
-  // Name column + (earliest history year..current year+7)
-  assert.ok(headCells.length > 8, "should include past history years plus the projected span");
+  assert.strictEqual(doc.querySelectorAll("#matrixBody tr:not(.matrix-cutoff-row)").length, 2);
+  const cutoffCells = [...doc.querySelectorAll("#matrixBody tr.matrix-cutoff-row td.matrix-cutoff")];
+  assert.ok(cutoffCells.length > 0 && cutoffCells.every((td) => /^(\d+|–)$/.test(td.textContent)), "whole numbers only");
+  assert.strictEqual(doc.querySelectorAll("#matrixBody .matrix-flag").length, 1, "Jason's 2026 row breaks the rules");
+  const note = doc.getElementById("matrixNote");
+  assert.strictEqual(note.hidden, false);
+  assert.ok(note.textContent.includes("Jason") && !note.textContent.includes("Old"));
 });
 
-check("buildCutoffRows returns one row per filled slot with real trend data, with the actual projected numbers used for 'ready'", () => {
-  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
-  const rows = APP.buildCutoffRows(target, [2026, 2027, 2028]);
-  assert.strictEqual(rows.length, 1);
-  assert.ok(rows[0].label.includes("24"), "label should identify the WMU/type/season/choice this row is for");
-  assert.strictEqual(rows[0].cutoffs.length, 3);
-  rows[0].cutoffs.forEach((c) => assert.strictEqual(typeof c, "number"));
-});
-
-check("buildCutoffRows skips slots with no resolvable trend data and returns nothing when no slots are filled", () => {
-  const noData = { primary: [{ wmu: "x", mooseType: "x", season: "x" }, null, null], secondChance: [null, null, null] };
-  assert.strictEqual(APP.buildCutoffRows(noData, [2026]).length, 0);
-  assert.strictEqual(APP.buildCutoffRows({ primary: [null, null, null], secondChance: [null, null, null] }, [2026]).length, 0);
-});
-
-check("renderMatrix shows the actual cutoff numbers as a row in the table, not just a probability", () => {
+check("renderTimelineTable marks predicted tags", () => {
   const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/" });
-  dom.window.APP.loadRoster([{ name: "A", pointsHistory: [{ year: 2026, points: 5, tagType: null, claimed: false }] }]);
-  const doc = dom.window.document;
-  const cutoffRow = doc.querySelector("#matrixBody tr.matrix-cutoff-row");
-  assert.ok(cutoffRow, "a cutoff row should be rendered for the default WMU24 bull/gun choice");
-  const cutoffCells = [...cutoffRow.querySelectorAll("td.matrix-cutoff")];
-  assert.ok(cutoffCells.length > 0);
-  cutoffCells.forEach((td) => assert.ok(/^\d+(\.\d)?$/.test(td.textContent.trim()), "each cutoff cell should show a plain number"));
+  const year = new Date().getFullYear();
+  dom.window.APP.loadRoster([{ name: "Carl", pointsHistory: [row(year, 11)] }]);
+  const predicted = dom.window.document.querySelectorAll("#timelineBody .timeline-predicted");
+  assert.ok(predicted.length > 0);
+  assert.ok(predicted[0].textContent.includes("Carl"));
 });
 
 check("renderChoiceTable renders 6 rows (Primary 1-3, Second Chance 1-3) with the default slot pre-filled", () => {
