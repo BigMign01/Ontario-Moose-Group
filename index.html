@@ -9,37 +9,39 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #f6f3ec;
-    --surface: #fffdf8;
-    --surface-2: #ece6d8;
-    --ink: #24201a;
-    --ink-dim: #5c5548;
-    --line: #ddd4c2;
-    --accent: #2f5233;
-    --accent-2: #4b7a4e;
-    --accent-soft: #dce8dd;
-    --amber: #a8641a;
-    --amber-soft: #f3e3cc;
-    --red: #a2402a;
-    --red-soft: #f2ddd4;
+    --bg: #f7f4ee;
+    --surface: #ffffff;
+    --surface-2: #e6dcc6;
+    --ink: #15130f;
+    --ink-dim: #3f3a31;
+    --line: #b9ad95;
+    --accent: #1f4a28;
+    --accent-2: #2f6a3a;
+    --accent-soft: #c7e2cb;
+    --on-accent: #ffffff;
+    --amber: #7d4508;
+    --amber-soft: #f6e2c2;
+    --red: #9a2e19;
+    --red-soft: #f6d9cf;
     --radius: .7rem;
     color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #191d16;
-      --surface: #22261d;
-      --surface-2: #2a2f22;
-      --ink: #ece7da;
-      --ink-dim: #aca690;
-      --line: #3a3f30;
-      --accent: #7cb885;
-      --accent-2: #9bcf9f;
-      --accent-soft: #2b3a2c;
-      --amber: #d99a4e;
-      --amber-soft: #3a2f1c;
-      --red: #d97e63;
-      --red-soft: #3a2620;
+      --bg: #151812;
+      --surface: #20251b;
+      --surface-2: #353d2b;
+      --ink: #f4efe2;
+      --ink-dim: #cfc8b3;
+      --line: #555d48;
+      --accent: #8fcc98;
+      --accent-2: #aedcb4;
+      --accent-soft: #2f4a33;
+      --on-accent: #10140e;
+      --amber: #f0b068;
+      --amber-soft: #3f321d;
+      --red: #ef9277;
+      --red-soft: #45271f;
       color-scheme: dark;
     }
   }
@@ -126,8 +128,8 @@
     background: var(--surface); color: var(--ink); padding: .5rem .9rem; font-weight: 600; font-size: .88rem;
   }
   button:hover { border-color: var(--accent); color: var(--accent); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  button.primary:hover { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  button.primary:hover { background: var(--accent-2); border-color: var(--accent-2); color: var(--on-accent); }
 
   #dataSection input[type="file"] {
     display: block; margin: .6rem 0; padding: .6rem; border: 1px dashed var(--line);
@@ -163,8 +165,8 @@
   .chart-legend { display: flex; flex-wrap: wrap; gap: .3rem 1.1rem; margin-top: .75rem; font-size: .85rem; color: var(--ink-dim); }
   .chart-legend span { display: inline-flex; align-items: center; gap: .35rem; }
   .chart-legend i { width: .7rem; height: .7rem; border-radius: 3px; display: inline-block; }
-  .chart-legend i.legend-ready { background: var(--accent-soft); border: 1px solid var(--accent); }
-  .chart-legend i.legend-current { background: var(--surface-2); border: 1px solid var(--ink-dim); }
+  .chart-legend i.legend-ready { background: var(--accent-soft); border: 2px solid var(--accent); }
+  .chart-legend i.legend-current { background: var(--surface-2); border: 2px solid var(--amber); }
 
   /* table-layout: auto + width: auto (overriding the global table{width:100%})
      lets this table grow wider than its wrapper once there are enough year
@@ -180,26 +182,31 @@
   table[id$="atrixTable"] tbody tr:hover td.matrix-name { background: var(--surface-2); }
   .matrix-name { font-weight: 600; }
   th.matrix-col { font-variant-numeric: tabular-nums; }
-  th.matrix-current, td.matrix-current { background: var(--surface-2); }
-  td.matrix-cell { font-variant-numeric: tabular-nums; color: var(--ink-dim); }
-  td.matrix-actual { color: var(--ink); font-weight: 600; }
-  td.matrix-empty { color: var(--line); }
-  td.matrix-ready { background: var(--accent-soft); color: var(--accent); font-weight: 700; border-radius: .35rem; }
-  .matrix-tag { font-size: .68rem; font-weight: 500; color: var(--amber); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
-  .matrix-tag-sim { color: var(--accent); }
-  td.matrix-sequence-tag { background: var(--accent); color: #fff; font-weight: 700; border-radius: .35rem; }
-  .matrix-sequence-tag .matrix-tag-sim { color: #fff; }
-  .matrix-cutoff-row { border-bottom: 2px solid var(--line); }
-  .matrix-cutoff-label { font-size: .78rem; font-weight: 600; color: var(--ink-dim); font-style: italic; }
-  td.matrix-cutoff { font-size: .82rem; color: var(--ink-dim); font-style: italic; }
+  /* Current year: a tint plus amber edges, since a tint alone is too faint. */
+  th.matrix-current, td.matrix-current {
+    background: var(--surface-2);
+    box-shadow: inset 2px 0 0 var(--amber), inset -2px 0 0 var(--amber);
+  }
+  th.matrix-current { color: var(--ink); }
+  td.matrix-cell { font-variant-numeric: tabular-nums; color: var(--ink); }
+  td.matrix-actual { font-weight: 700; }
+  td.matrix-projected { font-weight: 400; }
+  td.matrix-empty { color: var(--ink-dim); }
+  td.matrix-ready { background: var(--accent-soft); color: var(--accent); font-weight: 700; box-shadow: inset 0 0 0 2px var(--accent); }
+  .matrix-tag { font-size: .7rem; font-weight: 700; color: var(--amber); text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+  td.matrix-sequence-tag { background: var(--accent); color: var(--on-accent); font-weight: 700; box-shadow: none; }
+  .matrix-sequence-tag .matrix-tag-sim { color: var(--on-accent); }
+  tr.matrix-cutoff-row td { background: var(--amber-soft); border-bottom: 2px solid var(--amber); }
+  .matrix-cutoff-label { font-size: .8rem; font-weight: 700; color: var(--ink); }
+  td.matrix-cutoff { font-weight: 700; color: var(--amber); }
   .matrix-flag {
     display: inline-block; margin-left: .2rem; padding: 0 .3rem; border-radius: .3rem;
-    background: var(--red); color: #fff; font-size: .7rem; font-weight: 700; cursor: help;
+    background: var(--red); color: var(--on-accent); font-size: .7rem; font-weight: 700; cursor: help;
   }
-  .legend-flag { display: inline-block; padding: 0 .3rem; border-radius: .3rem; background: var(--red); color: #fff; font-size: .7rem; }
+  .legend-flag { display: inline-block; padding: 0 .3rem; border-radius: .3rem; background: var(--red); color: var(--on-accent); font-size: .7rem; font-weight: 700; }
   .matrix-skipped { color: var(--red); }
   .matrix-birth { font-weight: 400; font-size: .75rem; color: var(--ink-dim); }
-  .matrix-note { font-size: .88rem; color: var(--amber); }
+  .matrix-note { font-size: .88rem; color: var(--ink); background: var(--amber-soft); border-left: 3px solid var(--amber); padding: .5rem .8rem; border-radius: 0 .4rem .4rem 0; }
   .matrix-sort-btn {
     background: none; border: none; padding: 0; margin: 0; font: inherit; font-weight: inherit;
     color: inherit; cursor: pointer; white-space: nowrap;
@@ -231,13 +238,13 @@
   .choice-nodata { font-size: .78rem; color: var(--red); }
 
   .timeline-year { font-weight: 600; font-variant-numeric: tabular-nums; width: 5rem; }
-  tr.timeline-current td { background: var(--surface-2); }
+  tr.timeline-current td { background: var(--surface-2); box-shadow: inset 0 2px 0 var(--amber), inset 0 -2px 0 var(--amber); }
   .timeline-tag { padding: .1rem 0; }
   .timeline-status { color: var(--ink-dim); }
   .timeline-predicted { color: var(--accent); font-weight: 600; }
   .timeline-predicted .pill {
     display: inline-block; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em;
-    background: var(--accent); color: #fff; border-radius: 999px; padding: .05rem .5rem; margin-right: .2rem;
+    background: var(--accent); color: var(--on-accent); border-radius: 999px; padding: .05rem .5rem; margin-right: .2rem;
   }
   .timeline-none { color: var(--ink-dim); }
 
