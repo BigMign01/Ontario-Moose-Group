@@ -192,6 +192,7 @@
   .matrix-cutoff-row { border-bottom: 2px solid var(--line); }
   .matrix-cutoff-label { font-size: .78rem; font-weight: 600; color: var(--ink-dim); font-style: italic; }
   td.matrix-cutoff { font-size: .82rem; color: var(--ink-dim); font-style: italic; }
+  td.matrix-credit-hit { color: var(--accent); font-weight: 700; font-style: normal; }
   .matrix-sort-btn {
     background: none; border: none; padding: 0; margin: 0; font: inherit; font-weight: inherit;
     color: inherit; cursor: pointer; white-space: nowrap;
@@ -431,13 +432,17 @@
       choiceNoData: "No draw data for this combination",
       probabilityHeading: "Group Draw Probability",
       probabilityDesc: "The chance at least one hunter in the group draws a tag that year through any of the choices above, combined — not any single hunter's odds. Based on each filled choice's real MNR cutoff trend.",
-      probabilityColumns: { year: "Year", probability: "Probability" },
+      probabilityColumns: { year: "Year", probability: "Probability", holder: "Simulated tag holder" },
       probabilityEmpty: "Fill in at least one Group Choice above and load your roster to see this.",
       matrixHeading: "Where The Team Stands",
-      matrixDesc: "Each hunter's points by year. Past years show real points banked and the tag result if they won one. Years beyond their latest record are simulated year by year: once a hunter's points would clear the cutoff for any choice above, that's their tag year, marked “Tag”, and their points reset to 0 the year after — just like a real claimed tag. If two or more hunters would clear the cutoff the same year, only the one with the most points is picked as that year's tag holder; the others stay ready but keep building instead of resetting. Click any column header to sort by it.",
+      matrixDesc: "Each hunter's points by year. Past years show real points and tag results. Future years are simulated for the whole group: each year, every hunter's draw odds (points vs. the projected cutoff) are added up into “Expected tags”, which build up as “Tag credit”. When the credit reaches 1.00, the group has earned a tag — it goes to the hunter with the best odds that year (marked “Tag”), their points reset to 0 the year after, and 1 is taken off the credit. One tag per year at most. Hover a future cell to see that hunter's odds. Click any column header to sort.",
       matrixLegend: "<span><i class=\"legend-ready\"></i>Ready to clear the cutoff</span><span><i class=\"legend-sequence\"></i>This year's tag (points reset next year)</span><span><i class=\"legend-current\"></i>Current year</span>",
       matrixSequenceBadge: "Tag",
       matrixCutoffLabel: "Projected cutoff",
+      matrixExpectedLabel: "Expected tags (sum of odds)",
+      matrixCreditLabel: "Tag credit (tag at 1.00)",
+      matrixOddsTooltip: (pct) => `Draw odds this year: ${pct}%`,
+      probabilityDrawn: "Already drawn",
       matrixEmptyState: "No roster loaded yet. Upload your group's .xlsx template on the Data tab to see the team here.",
       rosterEmptyState: "No roster loaded yet. Upload your group's .xlsx template on the Data tab, or add a hunter below to start one by hand.",
       rosterEditHint: "Points, tag, claimed, and Northern status are editable directly in the table — changes save automatically in this browser.",
@@ -516,13 +521,17 @@
       choiceNoData: "Aucune donnée de tirage pour cette combinaison",
       probabilityHeading: "Probabilité de tirage du groupe",
       probabilityDesc: "La probabilité qu'au moins un chasseur du groupe tire un contingent cette année-là, à travers l'ensemble des choix ci-dessus — pas les chances d'un seul chasseur. Basée sur la tendance réelle du seuil du MRN pour chaque choix rempli.",
-      probabilityColumns: { year: "Année", probability: "Probabilité" },
+      probabilityColumns: { year: "Année", probability: "Probabilité", holder: "Détenteur simulé" },
       probabilityEmpty: "Remplissez au moins un choix du groupe ci-dessus et chargez votre liste pour voir ceci.",
       matrixHeading: "Où en est l'équipe",
-      matrixDesc: "Les points de chaque chasseur par année. Les années passées montrent les points réels et le résultat du contingent s'il en a gagné un. Les années après son dernier dossier connu sont simulées année par année : dès que les points d'un chasseur franchiraient le seuil d'un des choix ci-dessus, c'est son année de contingent, marquée « Contingent », et ses points reviennent à 0 l'année suivante — comme un vrai contingent réclamé. Si deux chasseurs ou plus franchiraient le seuil la même année, seul celui qui a le plus de points est choisi comme détenteur du contingent cette année-là; les autres restent prêts mais continuent d'accumuler au lieu de revenir à 0. Cliquez sur un en-tête de colonne pour trier.",
+      matrixDesc: "Les points de chaque chasseur par année. Les années passées montrent les points et contingents réels. Les années futures sont simulées pour tout le groupe : chaque année, les chances de tirage de chaque chasseur (points c. seuil projeté) sont additionnées en « Contingents attendus », qui s'accumulent en « Crédit de contingent ». Quand le crédit atteint 1,00, le groupe a gagné un contingent — il va au chasseur ayant les meilleures chances cette année-là (marqué « Contingent »), ses points reviennent à 0 l'année suivante, et 1 est retiré du crédit. Un seul contingent par année au maximum. Survolez une cellule future pour voir les chances du chasseur. Cliquez sur un en-tête de colonne pour trier.",
       matrixLegend: "<span><i class=\"legend-ready\"></i>Prêt à franchir le seuil</span><span><i class=\"legend-sequence\"></i>Contingent de l'année (points remis à 0 l'an prochain)</span><span><i class=\"legend-current\"></i>Année en cours</span>",
       matrixSequenceBadge: "Contingent",
       matrixCutoffLabel: "Seuil projeté",
+      matrixExpectedLabel: "Contingents attendus (somme des chances)",
+      matrixCreditLabel: "Crédit de contingent (contingent à 1,00)",
+      matrixOddsTooltip: (pct) => `Chances de tirage cette année : ${pct} %`,
+      probabilityDrawn: "Déjà tiré",
       matrixEmptyState: "Aucune liste chargée pour l'instant. Téléversez le modèle .xlsx de votre groupe dans l'onglet Données pour voir l'équipe ici.",
       rosterEmptyState: "Aucune liste chargée pour l'instant. Téléversez le modèle .xlsx de votre groupe dans l'onglet Données, ou ajoutez un chasseur ci-dessous pour en commencer une à la main.",
       rosterEditHint: "Les points, le contingent, le statut réclamé et le statut Nord sont modifiables directement dans le tableau — les changements se sauvegardent automatiquement dans ce navigateur.",
@@ -947,20 +956,9 @@
       .filter(Boolean);
   }
 
-  function hunterProjectedPointsAtYear(hunter, year) {
-    const entry = (hunter.pointsHistory || []).find((e) => e.year === year);
-    if (entry) return entry.points;
-    const last = latestEntry(hunter);
-    if (last && year > last.year) return projectedPoints(hunter, year, last.year);
-    return null;
-  }
-
   // Combined probability of drawing a tag that year given an explicit
   // points total (already including any Northern bonus), via any filled
-  // Group Choice slot. This is the shared math hunterCombinedProbability()
-  // and the matrix simulation both build on - the matrix needs to evaluate
-  // it against simulated (post-reset) points, not just a hunter's naive
-  // banked-points-plus-years-elapsed projection.
+  // Group Choice slot - OR across slots. Null when no slot has trend data.
   function combinedProbabilityForPoints(effectivePoints, year, groupChoice) {
     const slots = collectChoiceSlots(groupChoice);
     if (!slots.length) return null;
@@ -976,36 +974,16 @@
     return any ? 1 - missAll : null;
   }
 
-  // Probability a single hunter draws a tag that year via any filled slot.
-  // Returns null (not 0) when there's nothing to compute from - no filled
-  // slots, no resolvable trend for any of them, or no known/projectable
-  // points for that hunter that year - so callers can tell "no data" apart
-  // from "genuinely near-zero odds".
-  function hunterCombinedProbability(hunter, year, groupChoice) {
-    const points = hunterProjectedPointsAtYear(hunter, year);
-    if (points === null) return null;
-    const bonus = isNorthernResident(hunter) ? NORTHERN_PREFERENCE_POINT : 0;
-    return combinedProbabilityForPoints(points + bonus, year, groupChoice);
-  }
-
-  // Probability the GROUP (at least one hunter) draws a tag that year.
-  function groupProbability(roster, year, groupChoice) {
-    if (!roster || !roster.length) return null;
-    let missAll = 1;
-    let any = false;
-    roster.forEach((hunter) => {
-      const p = hunterCombinedProbability(hunter, year, groupChoice);
-      if (p === null) return;
-      any = true;
-      missAll *= 1 - p;
-    });
-    return any ? 1 - missAll : null;
-  }
-
+  // Derived from the same simulation as the matrix (resets included), so
+  // the two can never disagree. Years where every hunter already has a
+  // real record (the draw already happened) come back as null.
   function buildGroupProbabilityTable(roster, groupChoice, startYear, endYear) {
-    const years = [];
-    for (let year = startYear; year <= endYear; year++) years.push(year);
-    return years.map((year) => ({ year, probability: groupProbability(roster, year, groupChoice) }));
+    const historyYears = (roster || []).flatMap((h) => (h.pointsHistory || []).map((e) => e.year));
+    const simStart = historyYears.length ? Math.min(startYear, ...historyYears) : startYear;
+    const { yearStats } = buildGroupMatrix(roster, groupChoice, simStart, endYear);
+    return yearStats
+      .filter((s) => s.year >= startYear)
+      .map((s) => ({ year: s.year, probability: s.groupProbability, expected: s.expected, holder: s.holder }));
   }
 
   // ---------------------------------------------------------------------
@@ -1578,13 +1556,13 @@
     const currentYear = new Date().getFullYear();
     const endYear = currentYear + FORECAST_SPAN_YEARS;
     const cols = t("probabilityColumns");
-    head.innerHTML = `<th>${cols.year}</th><th>${cols.probability}</th>`;
+    head.innerHTML = `<th>${cols.year}</th><th>${cols.probability}</th><th>${cols.holder}</th>`;
 
     body.innerHTML = "";
     if (activeRoster.length === 0 || collectChoiceSlots(choice).length === 0) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
-      td.colSpan = 2;
+      td.colSpan = 3;
       td.textContent = t("probabilityEmpty");
       tr.appendChild(td);
       body.appendChild(tr);
@@ -1597,43 +1575,38 @@
       const yearCell = document.createElement("td");
       yearCell.textContent = row.year;
       const probCell = document.createElement("td");
+      const holderCell = document.createElement("td");
       if (row.probability === null) {
-        probCell.textContent = "–";
+        probCell.textContent = t("probabilityDrawn");
+        holderCell.textContent = "–";
       } else {
         probCell.textContent = Math.round(row.probability * 100) + "%";
         probCell.className = "prob-cell " + probabilityBand(row.probability);
+        holderCell.textContent = row.holder || "–";
       }
-      tr.append(yearCell, probCell);
+      tr.append(yearCell, probCell, holderCell);
       body.appendChild(tr);
     });
   }
 
   // ---------------------------------------------------------------------
-  // buildGroupMatrix - the main view: one row per hunter, one column per
-  // year. Past years (an actual pointsHistory entry exists) show the real
-  // points banked and, if a tag was won that year, the tag result. Years
-  // after a hunter's latest known record show a plain projected points
-  // number (banked +1/year), flagged "ready" when that projection would
-  // fully clear the chosen WMU's projected cutoff that year (probability
-  // ramp from drawProbability() reaching 1, not shown as a percentage -
-  // just a plain number and a highlight). This always forecasts for the
-  // one WMU/tag type/season/choice the group has chosen, never several
-  // WMUs superimposed.
+  // buildGroupMatrix - one row per hunter, one column per year. Past years
+  // show real points and tag results; years after a hunter's latest record
+  // are simulated year by year for the whole group together.
+  //
+  // Tag holder selection - "expected-tags accumulator":
+  //  1. Each projected year, every hunter's draw odds are computed from
+  //     their simulated points vs that year's projected cutoff.
+  //  2. Summing those odds gives the tags the group should EXPECT that
+  //     year. That sum is banked as "tag credit" and carried forward.
+  //  3. When credit reaches 1, the group has earned a tag: it goes to the
+  //     hunter with the best odds that year (ties: more points, then
+  //     name), whose points reset the following year; credit drops by 1.
+  //  At most one tag per year. This makes partial odds count (several 30%
+  //  years add up to a tag) instead of waiting for someone to hit 100%,
+  //  which a rising cutoff may never allow - and it matches the group
+  //  probability table, which is computed from the same simulation.
   // ---------------------------------------------------------------------
-  // buildGroupMatrix - a year-by-year sequential simulation, not just each
-  // hunter projected independently. Party hunting means the group tells
-  // one story of who has a tag when, so when a hunter's simulated points
-  // would clear the chosen combination's cutoff, that's a tag year: their
-  // simulated points reset to 0 the following year, exactly like a real
-  // claimed tag resets banked points. When two or more hunters would clear
-  // the cutoff in the SAME year, only one can meaningfully be "the" tag
-  // holder that year for this sequence, so the simulation picks the one
-  // with the most points (closest to certain, and the real draw favours
-  // more points) - ties broken alphabetically for a deterministic result -
-  // and marks that cell sequenceTag:true. The others stay ready (still
-  // shown as clearing the cutoff) but are not reset, since in this
-  // simulation they didn't use a tag that year; they carry their points
-  // forward and are re-evaluated the following year.
   function buildGroupMatrix(roster, groupChoice, startYear, endYear) {
     const years = [];
     for (let year = startYear; year <= endYear; year++) years.push(year);
@@ -1645,6 +1618,8 @@
     const simPoints = new Map(hunters.map((h) => [h.name, pointsGoingForward(h)]));
     const lastKnownYear = new Map(hunters.map((h) => [h.name, latestEntry(h) ? latestEntry(h).year : null]));
     const cellsByHunter = new Map(hunters.map((h) => [h.name, new Map()]));
+    const yearStats = [];
+    let credit = 0;
 
     years.forEach((year) => {
       const projectedThisYear = [];
@@ -1675,28 +1650,48 @@
         // this year's accrual (the +1 for applying this year without
         // having won yet) happens now, before evaluating this year's odds.
         const points = simPoints.get(hunter.name) + 1;
-        const probability = combinedProbabilityForPoints(points + bonusFor(hunter), year, groupChoice);
-        return { hunter, points, ready: probability !== null && probability >= 1 };
+        const p = combinedProbabilityForPoints(points + bonusFor(hunter), year, groupChoice);
+        return { hunter, points, probability: p === null ? 0 : p };
       });
 
-      const ready = evaluated.filter((e) => e.ready);
-      let winnerName = null;
-      if (ready.length > 0) {
-        ready.sort((a, b) => b.points - a.points || a.hunter.name.localeCompare(b.hunter.name));
-        winnerName = ready[0].hunter.name;
+      if (evaluated.length === 0) {
+        yearStats.push({ year, projected: false, expected: null, groupProbability: null, credit: null, holder: null });
+        return;
       }
 
-      evaluated.forEach(({ hunter, points, ready: isReady }) => {
+      const expected = evaluated.reduce((sum, e) => sum + e.probability, 0);
+      const groupP = 1 - evaluated.reduce((miss, e) => miss * (1 - e.probability), 1);
+      credit += expected;
+      const creditThisYear = credit;
+
+      let winnerName = null;
+      if (credit >= 1) {
+        const ranked = evaluated
+          .filter((e) => e.probability > 0)
+          .sort(
+            (a, b) =>
+              b.probability - a.probability || b.points - a.points || a.hunter.name.localeCompare(b.hunter.name)
+          );
+        if (ranked.length > 0) {
+          winnerName = ranked[0].hunter.name;
+          credit -= 1;
+        }
+      }
+
+      evaluated.forEach(({ hunter, points, probability }) => {
         const isWinner = hunter.name === winnerName;
         cellsByHunter.get(hunter.name).set(year, {
           year,
           kind: "projected",
           points,
-          ready: isReady,
+          probability,
+          ready: probability >= 1,
           sequenceTag: isWinner
         });
         simPoints.set(hunter.name, isWinner ? 0 : points);
       });
+
+      yearStats.push({ year, projected: true, expected, groupProbability: groupP, credit: creditThisYear, holder: winnerName });
     });
 
     const rows = hunters.map((hunter) => ({
@@ -1704,7 +1699,7 @@
       cells: years.map((year) => cellsByHunter.get(hunter.name).get(year) || { year, kind: "empty" })
     }));
 
-    return { years, rows };
+    return { years, rows, yearStats };
   }
 
   const MATRIX_SORT_KEYS = { NAME: "name" };
@@ -1728,7 +1723,7 @@
       if (va > vb) return 1 * dir;
       return a.name.localeCompare(b.name);
     });
-    return { years: matrix.years, rows };
+    return Object.assign({}, matrix, { rows });
   }
 
   function renderMatrix(variant) {
@@ -1808,6 +1803,35 @@
       body.appendChild(tr);
     });
 
+    // Expected tags / tag credit rows - the accumulator that decides when
+    // the group earns a tag (see buildGroupMatrix), shown year by year.
+    const statsByYear = new Map(matrix.yearStats.map((s) => [s.year, s]));
+    [
+      { key: "expected", label: t("matrixExpectedLabel") },
+      { key: "credit", label: t("matrixCreditLabel") }
+    ].forEach(({ key, label }) => {
+      const tr = document.createElement("tr");
+      tr.className = "matrix-cutoff-row";
+      const labelCell = document.createElement("td");
+      labelCell.className = "matrix-name matrix-cutoff-label";
+      labelCell.textContent = label;
+      tr.appendChild(labelCell);
+      matrix.years.forEach((year) => {
+        const s = statsByYear.get(year);
+        const td = document.createElement("td");
+        td.className = "matrix-cell matrix-cutoff";
+        if (year === currentYear) td.classList.add("matrix-current");
+        if (s && s.projected) {
+          td.textContent = s[key].toFixed(2);
+          if (key === "credit" && s.holder) td.classList.add("matrix-credit-hit");
+        } else {
+          td.textContent = "–";
+        }
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+
     matrix.rows.forEach((row) => {
       const tr = document.createElement("tr");
       const nameCell = document.createElement("td");
@@ -1827,6 +1851,7 @@
         } else if (cell.kind === "projected") {
           const badge = cell.sequenceTag ? '<div class="matrix-tag matrix-tag-sim">' + t("matrixSequenceBadge") + "</div>" : "";
           td.innerHTML = cell.points + badge;
+          td.title = t("matrixOddsTooltip", Math.round(cell.probability * 100));
         } else {
           td.textContent = "–";
         }
@@ -2036,8 +2061,6 @@
       buildHunterForecast,
       computeGroupStaggering,
       collectChoiceSlots,
-      hunterCombinedProbability,
-      groupProbability,
       buildGroupProbabilityTable,
       pointsGoingForward,
       buildGroupMatrix,

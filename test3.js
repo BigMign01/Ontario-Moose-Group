@@ -166,8 +166,7 @@ check("collectChoiceSlots only returns filled slots, across both Primary and Sec
   APP.setChoiceSlot("secondChance", 0, "wmu", "");
 });
 
-check("hunterCombinedProbability combines multiple filled slots as an OR (any slot succeeding is enough)", () => {
-  // Two real WMUs with resolvable trends - the OR-combination should never do worse than one alone.
+check("combinedProbabilityForPoints combines multiple filled slots as an OR (any slot succeeding is enough)", () => {
   const real = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
   const realTwo = {
     primary: [
@@ -176,41 +175,23 @@ check("hunterCombinedProbability combines multiple filled slots as an OR (any sl
     ],
     secondChance: [null, null, null]
   };
-  const readyHunter = { name: "Multi", pointsHistory: [{ year: 2026, points: 11, tagType: null, claimed: false, northernResident: false }] };
-  const pOne = APP.hunterCombinedProbability(readyHunter, 2026, real);
-  const pTwo = APP.hunterCombinedProbability(readyHunter, 2026, realTwo);
+  const pOne = APP.combinedProbabilityForPoints(11, 2026, real);
+  const pTwo = APP.combinedProbabilityForPoints(11, 2026, realTwo);
   assert.ok(pOne !== null && pTwo !== null);
   assert.ok(pTwo >= pOne, "adding a second slot should never lower the combined probability");
-});
-
-check("hunterCombinedProbability returns null when no slots are filled or points are unknown", () => {
-  const hunter = { name: "Empty", pointsHistory: [] };
   const empty = { primary: [null, null, null], secondChance: [null, null, null] };
-  assert.strictEqual(APP.hunterCombinedProbability(hunter, 2026, empty), null, "no filled slots -> null");
-  const real = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
-  assert.strictEqual(APP.hunterCombinedProbability(hunter, 2026, real), null, "no points history at all -> null");
+  assert.strictEqual(APP.combinedProbabilityForPoints(11, 2026, empty), null, "no filled slots -> null");
 });
 
-check("groupProbability combines every hunter as an OR (the group succeeds if any one hunter does)", () => {
+check("buildGroupProbabilityTable comes from the same simulation as the matrix: already-drawn years are null, resets are respected", () => {
   const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
-  const readyHunter = { name: "Ready", pointsHistory: [{ year: 2026, points: 12, tagType: null, claimed: false, northernResident: false }] };
-  const farHunter = { name: "Far", pointsHistory: [{ year: 2026, points: 0, tagType: null, claimed: false, northernResident: false }] };
-  const soloGroup = APP.groupProbability([farHunter], 2026, target);
-  const pairGroup = APP.groupProbability([farHunter, readyHunter], 2026, target);
-  assert.ok(pairGroup > soloGroup, "adding a ready hunter should raise the group's odds");
-});
-
-check("buildGroupProbabilityTable returns one row per year and probabilities never exceed 1", () => {
-  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
-  const hunters = [{ name: "A", pointsHistory: [{ year: 2026, points: 5, tagType: null, claimed: false, northernResident: false }] }];
-  const table = APP.buildGroupProbabilityTable(hunters, target, 2026, 2030);
+  // Claimed a tag on the latest row: the naive projection would give this
+  // hunter 9+N points; the simulation (correctly) restarts from 0.
+  const claimed = [{ name: "A", pointsHistory: [{ year: 2026, points: 12, tagType: "Bull", claimed: true }] }];
+  const table = APP.buildGroupProbabilityTable(claimed, target, 2026, 2030);
   assert.strictEqual(table.length, 5);
-  table.forEach((row) => {
-    if (row.probability !== null) {
-      assert.ok(row.probability >= 0 && row.probability <= 1);
-    }
-  });
-  assert.ok(table[table.length - 1].probability >= table[0].probability, "odds should not decrease as points build up");
+  assert.strictEqual(table[0].probability, null, "2026 is already drawn (real record) - no forecast");
+  table.slice(1).forEach((row) => assert.strictEqual(row.probability, 0, "restarting from 0 points can't reach a ~13 cutoff by 2030"));
 });
 
 check("buildGroupMatrix: past years show actual points and tag result; future years show a plain projected number", () => {
@@ -302,8 +283,8 @@ check("buildGroupMatrix resets a hunter's simulated points to 0 the year after t
   const cells = matrix.rows[0].cells;
   // find the first cell that clears the cutoff (sequenceTag true)
   const tagIdx = cells.findIndex((c) => c.sequenceTag);
-  assert.ok(tagIdx > 0, "the hunter should eventually clear the cutoff and get a simulated tag");
-  assert.strictEqual(cells[tagIdx].ready, true);
+  assert.ok(tagIdx > 0, "the hunter should eventually earn a simulated tag");
+  assert.ok(cells[tagIdx].probability > 0);
   const nextCell = cells[tagIdx + 1];
   assert.ok(nextCell, "there should be a year after the tag year in this window");
   assert.strictEqual(nextCell.points, 1, "points restart from 0+1 the year after a simulated tag");
@@ -328,6 +309,50 @@ check("buildGroupMatrix picks only one hunter as that year's tag holder when sev
   // picked as this year's tag holder
   assert.strictEqual(cellA.sequenceTag, true, "the hunter with more points wins the tie-break");
   assert.strictEqual(cellB.sequenceTag, false, "the other ready hunter is not reset, even though they also cleared the cutoff");
+});
+
+check("tag holder: partial odds accumulate as 'tag credit' until they add up to a whole expected tag", () => {
+  // Real WMU24 bull/gun fitted cutoffs: 2027≈13, 2028≈13.4. Solo hunter at
+  // 11 in 2026 -> 12 in 2027 (odds 50%, not enough alone), 13 in 2028
+  // (odds 80%): credit 0.5 + 0.8 = 1.3 >= 1 -> tag in 2028, credit 0.3 left.
+  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
+  const solo = { name: "Solo", pointsHistory: [{ year: 2026, points: 11, tagType: null, claimed: false }] };
+  const m = APP.buildGroupMatrix([solo], target, 2026, 2029);
+  const stats = Object.fromEntries(m.yearStats.map((s) => [s.year, s]));
+  assert.strictEqual(stats[2026].projected, false, "2026 is a real record, not simulated");
+  assert.ok(Math.abs(stats[2027].expected - 0.5) < 0.05, "2027 expected tags ≈ 0.5");
+  assert.strictEqual(stats[2027].holder, null, "half a tag isn't a tag yet");
+  assert.ok(stats[2028].credit >= 1, "credit reaches a whole tag in 2028");
+  assert.strictEqual(stats[2028].holder, "Solo");
+  const cells = m.rows[0].cells;
+  assert.strictEqual(cells.find((c) => c.year === 2028).sequenceTag, true);
+  assert.strictEqual(cells.find((c) => c.year === 2029).points, 1, "points reset the year after the tag");
+});
+
+check("tag holder: when credit allows a tag, it goes to the hunter with the best odds that year, and only one per year", () => {
+  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
+  const hunters = [
+    { name: "Low", pointsHistory: [{ year: 2026, points: 11, tagType: null, claimed: false }] },
+    { name: "High", pointsHistory: [{ year: 2026, points: 12, tagType: null, claimed: false }] },
+    { name: "Mid", pointsHistory: [{ year: 2026, points: 11, tagType: null, claimed: false }] }
+  ];
+  const m = APP.buildGroupMatrix(hunters, target, 2026, 2027);
+  // 2027: High 13 (odds 100%), Low/Mid 12 (50% each) -> expected 2, one tag.
+  const s2027 = m.yearStats.find((s) => s.year === 2027);
+  assert.strictEqual(s2027.holder, "High");
+  const tagged = m.rows.filter((r) => r.cells.find((c) => c.year === 2027).sequenceTag);
+  assert.strictEqual(tagged.length, 1, "at most one tag holder per year");
+});
+
+check("tag holder: the Northern bonus counts toward odds and can decide who gets the tag", () => {
+  const target = { primary: [{ wmu: "24", mooseType: "Bull", season: "Gun" }, null, null], secondChance: [null, null, null] };
+  const hunters = [
+    { name: "Aaron", pointsHistory: [{ year: 2026, points: 11, tagType: null, claimed: false }] },
+    { name: "Zoe", northernResident: true, pointsHistory: [{ year: 2026, points: 11, tagType: null, claimed: false }] }
+  ];
+  const m = APP.buildGroupMatrix(hunters, target, 2026, 2027);
+  // Both 12 points in 2027; Zoe's +1 Northern bonus gives her the better odds.
+  assert.strictEqual(m.yearStats.find((s) => s.year === 2027).holder, "Zoe");
 });
 
 check("sortMatrixRows sorts by hunter name and by any year column, ascending and descending", () => {
